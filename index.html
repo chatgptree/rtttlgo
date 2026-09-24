@@ -30,7 +30,7 @@
 }
 *,*::before,*::after{box-sizing:inherit}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
-body{margin:0;background:var(--shell);color:var(--text);font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--shell);color:var(--text);font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%;overflow-x:hidden}
 .wrap{max-width:1060px;margin:0 auto;padding:18px 16px 72px}
 header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px}
 h1{font-family:"Pixelify Sans",Archivo,sans-serif;font-weight:600;font-size:30px;margin:0}
@@ -43,14 +43,18 @@ button,select,input{font-family:inherit;font-size:14px;color:var(--text)}
 .btn.primary{background:var(--ink);color:var(--lcd);border-color:var(--ink)}
 .btn.on{background:var(--amber);border-color:var(--amber);color:#fff}
 .btn.sm{padding:5px 9px;font-size:12.5px;font-family:"JetBrains Mono",ui-monospace,monospace}
-.btn:focus-visible,textarea:focus-visible,select:focus-visible,input:focus-visible,.rollwrap:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.btn:focus-visible,textarea:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 
-.lcd{background:var(--lcd);border:1px solid var(--line);border-radius:var(--radius);padding:8px;box-shadow:inset 0 0 0 3px var(--lcd-dim)}
-.rollwrap{display:flex;align-items:stretch;background:var(--lcd)}
-.rollwrap:focus{outline:2px solid var(--amber);outline-offset:2px}
-#keys{flex:0 0 auto;display:block}
-.rollbox{flex:1 1 auto;overflow-x:auto;overflow-y:hidden}
+.lcd{background:var(--lcd);border:1px solid var(--line);border-radius:var(--radius);padding:8px;box-shadow:inset 0 0 0 3px var(--lcd-dim);
+  margin-left:calc(50% - 50vw + 14px);margin-right:calc(50% - 50vw + 14px)}
+.rollbox{height:340px;min-height:130px;overflow:auto;background:var(--lcd);resize:vertical}
+.rollbox:focus{outline:2px solid var(--amber);outline-offset:-2px}
+.rollrow{display:flex;align-items:flex-start;width:max-content}
+#keys{position:sticky;left:0;z-index:2;display:block}
 #roll{display:block;touch-action:none;cursor:crosshair}
+.lcd:fullscreen{margin:0;display:flex;flex-direction:column;border-radius:0;padding:10px}
+.lcd:fullscreen .rollbox{flex:1 1 auto;height:auto;resize:none}
+.lcd:-webkit-full-screen{margin:0;display:flex;flex-direction:column;padding:10px}
 .readout{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12.5px;color:var(--ink-soft);padding:8px 2px 0}
 .readout b{color:var(--ink);font-weight:500}
 
@@ -101,10 +105,9 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
   <button class="btn" id="theme">Dim / lit</button>
 </header>
 
-<div class="lcd">
-  <div class="rollwrap" id="rollwrap" tabindex="0">
-    <canvas id="keys"></canvas>
-    <div class="rollbox" id="rollbox"><canvas id="roll"></canvas></div>
+<div class="lcd" id="stage">
+  <div class="rollbox" id="rollbox" tabindex="0">
+    <div class="rollrow"><canvas id="keys"></canvas><canvas id="roll"></canvas></div>
   </div>
   <div class="readout">
     <span id="rTime"><b>0:00</b> / 0:00</span>
@@ -118,7 +121,9 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
   <button class="btn primary" id="play">Play</button>
   <button class="btn" id="stop">Stop</button>
   <button class="btn" id="undo">Undo</button>
-  <span class="hint">Drag a note up or down to retune it · drag its right edge to change length · <kbd>space</kbd> plays</span>
+  <button class="btn" id="fit">Fit to width</button>
+  <button class="btn" id="full">Full screen</button>
+  <span class="hint">Drag a note up or down to retune it · drag its right edge to change length · <kbd>ctrl</kbd>+wheel zooms · <kbd>shift</kbd>+wheel or <kbd>alt</kbd>+drag pans · drag the panel's bottom edge to make it taller</span>
 </div>
 
 <div class="inspector" id="inspector">
@@ -160,7 +165,8 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
   <label class="knob"><span>Note gap <b id="vGap">8</b>%</span><input type="range" id="gap" min="0" max="40" step="1" value="8"></label>
   <label class="knob"><span>Voice</span>
     <select id="wave"><option value="square">Square (piezo)</option><option value="sawtooth">Saw</option><option value="triangle">Triangle</option><option value="sine">Sine</option></select></label>
-  <label class="knob"><span>Zoom</span><input type="range" id="zoom" min="8" max="220" step="1" value="60"></label>
+  <label class="knob"><span>Zoom <b id="vZoom">60</b> px/s</span><input type="range" id="zoom" min="4" max="600" step="1" value="60"></label>
+  <label class="knob"><span>Row height <b id="vRow">14</b></span><input type="range" id="rowh" min="5" max="48" step="1" value="14"></label>
   <label class="knob"><span>BPM <b id="vBpm">63</b></span><input type="range" id="bpm" min="20" max="900" step="1" value="63"></label>
 </div>
 
@@ -345,14 +351,15 @@ function layout(){
   dpr=Math.min(2,window.devicePixelRatio||1);
   range();
   var rows=hi-lo+1;
-  rowH=clamp(Math.floor(250/rows),8,18);
+  rowH=clamp(parseInt(el('rowh').value,10)||14,5,48);
   H=rows*rowH;
-  var boxW=el('rollbox').clientWidth||300;
+  var boxW=Math.max(160,(el('rollbox').clientWidth||420)-KEYW-2);
   W=Math.max(boxW,Math.ceil(song.total*pxPerSec)+40);
   cv.style.width=W+'px';cv.style.height=H+'px';
   cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
   kv.style.width=KEYW+'px';kv.style.height=H+'px';
   kv.width=Math.round(KEYW*dpr);kv.height=Math.round(H*dpr);
+  lastBox=el('rollbox').clientWidth+'x'+el('rollbox').clientHeight;
   drawKeys();renderLayer();draw();
 }
 function yOf(midi){return (hi-midi)*rowH;}
@@ -407,14 +414,37 @@ function draw(){
   }
   c2.fillStyle=css('--amber');c2.fillRect(p*pxPerSec,0,1.5,H);
 }
+var lastBox='';
 function follow(){
-  var box=el('rollbox'),px=position()*pxPerSec;
-  if(px<box.scrollLeft+40||px>box.scrollLeft+box.clientWidth-60) box.scrollLeft=Math.max(0,px-box.clientWidth*0.35);
+  var box=el('rollbox'),px=KEYW+position()*pxPerSec;
+  if(px<box.scrollLeft+KEYW+30||px>box.scrollLeft+box.clientWidth-40)
+    box.scrollLeft=Math.max(0,px-KEYW-box.clientWidth*0.35);
 }
 function scrollToSel(){
   if(sel<0||sel>=song.notes.length)return;
-  var box=el('rollbox'),x=song.notes[sel].t*pxPerSec;
-  if(x<box.scrollLeft+20||x>box.scrollLeft+box.clientWidth-40) box.scrollLeft=Math.max(0,x-box.clientWidth*0.4);
+  var box=el('rollbox'),n=song.notes[sel],px=KEYW+n.t*pxPerSec;
+  if(px<box.scrollLeft+KEYW+20||px+n.d*pxPerSec>box.scrollLeft+box.clientWidth-30)
+    box.scrollLeft=Math.max(0,px-KEYW-box.clientWidth*0.4);
+  if(n.midi!=null){
+    var y=yOf(n.midi);
+    if(y<box.scrollTop||y+rowH>box.scrollTop+box.clientHeight)
+      box.scrollTop=Math.max(0,y-box.clientHeight/2);
+  }
+}
+function setZoom(v,anchorClientX){
+  var box=el('rollbox'),r=box.getBoundingClientRect();
+  var ax=(anchorClientX==null?box.clientWidth/2+r.left:anchorClientX)-r.left;
+  var t=(box.scrollLeft+ax-KEYW)/pxPerSec;
+  pxPerSec=clamp(v,4,600);
+  el('zoom').value=Math.round(pxPerSec);el('vZoom').textContent=Math.round(pxPerSec);
+  layout();
+  box.scrollLeft=Math.max(0,KEYW+t*pxPerSec-ax);
+}
+function fitWidth(){
+  if(!song.total)return;
+  var avail=Math.max(120,el('rollbox').clientWidth-KEYW-16);
+  setZoom(avail/song.total,null);
+  el('rollbox').scrollLeft=0;
 }
 
 /* ---------- state plumbing ---------- */
@@ -530,8 +560,14 @@ function bestDur(target){
   return best;
 }
 cv.addEventListener('pointerdown',function(e){
-  el('rollwrap').focus({preventScroll:true});
-  var p=pos(e),time=p.x/pxPerSec,i=noteAt(time);
+  el('rollbox').focus({preventScroll:true});
+  var p=pos(e);
+  if(e.altKey||e.button===1){
+    var box=el('rollbox');
+    drag={mode:'pan',x:e.clientX,y:e.clientY,sl:box.scrollLeft,st:box.scrollTop};
+    cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing';e.preventDefault();return;
+  }
+  var time=p.x/pxPerSec,i=noteAt(time);
   if(i<0){
     if(time>=song.total&&parsed.tokens.length<20000){
       var t={p:false,dur:parsed.d,dotted:false,letter:'c',acc:'',idx:0,oct:parsed.o};
@@ -564,6 +600,12 @@ cv.addEventListener('pointermove',function(e){
     else cv.style.cursor='crosshair';
     return;
   }
+  if(drag.mode==='pan'){
+    var box=el('rollbox');
+    box.scrollLeft=drag.sl-(e.clientX-drag.x);
+    box.scrollTop=drag.st-(e.clientY-drag.y);
+    return;
+  }
   if(drag.mode==='len'){
     snapOnce();
     var target=Math.max(0.01,p.x/pxPerSec-drag.startT);
@@ -592,7 +634,29 @@ cv.addEventListener('pointerup',endDrag);
 cv.addEventListener('pointercancel',endDrag);
 window.addEventListener('pointerup',endDrag);
 
-el('rollwrap').addEventListener('keydown',function(e){
+el('rollbox').addEventListener('wheel',function(e){
+  if(e.ctrlKey||e.metaKey){ e.preventDefault(); setZoom(pxPerSec*(e.deltaY<0?1.18:0.85),e.clientX); }
+  else if(e.shiftKey&&!e.deltaX){ e.preventDefault(); el('rollbox').scrollLeft+=e.deltaY; }
+},{passive:false});
+el('fit').addEventListener('click',fitWidth);
+el('full').addEventListener('click',function(){
+  var s=el('stage');
+  if(document.fullscreenElement||document.webkitFullscreenElement){
+    (document.exitFullscreen||document.webkitExitFullscreen).call(document);
+  } else {
+    var req=s.requestFullscreen||s.webkitRequestFullscreen;
+    if(req) req.call(s); else toast('Full screen is blocked in this browser');
+  }
+});
+['fullscreenchange','webkitfullscreenchange'].forEach(function(ev){
+  document.addEventListener(ev,function(){
+    var on=!!(document.fullscreenElement||document.webkitFullscreenElement);
+    el('full').textContent=on?'Exit full screen':'Full screen';
+    setTimeout(function(){layout();if(on)fitWidth();},80);
+  });
+});
+
+el('rollbox').addEventListener('keydown',function(e){
   var k=e.key;
   if(k==='ArrowLeft'){selectIdx(sel-1,true);e.preventDefault();}
   else if(k==='ArrowRight'){selectIdx(sel<0?0:sel+1,true);e.preventDefault();}
@@ -621,7 +685,8 @@ el('bpm').addEventListener('input',function(){
 el('vol').addEventListener('input',function(){el('vVol').textContent=el('vol').value;if(master)master.gain.value=Math.pow(el('vol').value/100,2)*0.5;});
 el('gap').addEventListener('input',function(){el('vGap').textContent=el('gap').value;});
 el('wave').addEventListener('change',function(){if(playing)restart();});
-el('zoom').addEventListener('input',function(){pxPerSec=parseInt(el('zoom').value,10);layout();});
+el('zoom').addEventListener('input',function(){el('vZoom').textContent=el('zoom').value;setZoom(parseInt(el('zoom').value,10),null);});
+el('rowh').addEventListener('input',function(){el('vRow').textContent=el('rowh').value;layout();scrollToSel();});
 function restart(){ if(playing){var p=position();pause();offset=p;rebuild();play();} else rebuild(); }
 el('rollbox').addEventListener('dblclick',function(e){
   var p=pos(e),t=clamp(p.x/pxPerSec,0,song.total);
@@ -715,11 +780,19 @@ el('save').addEventListener('click',function(){
 try{var th=localStorage.getItem('rtttl.theme');if(th)document.documentElement.setAttribute('data-theme',th);}catch(e){}
 el('src').value="Axel-F:d=4,o=5,b=125:g,8a#.,8g,16g,8c6,8g,8f,g,8d.6,8g,16g,8d#6,8d6,8a,8g,8g,8d6,8g6,8g,8f,16f,8d,8a,2g,p,16f6,8d6,8c6,8a#,8a,8a#,8a,8f,8g,8a,8a#,8c6,8d6,8a#,8g,2g";
 pxPerSec=parseInt(el('zoom').value,10);
+el('vZoom').textContent=pxPerSec;el('vRow').textContent=el('rowh').value;
 fullParse();libDraw();
+if(window.ResizeObserver){
+  new ResizeObserver(function(){
+    var k=el('rollbox').clientWidth+'x'+el('rollbox').clientHeight;
+    if(k===lastBox)return;
+    layout();
+  }).observe(el('rollbox'));
+}
 window.addEventListener('resize',layout);
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){drawKeys();renderLayer();draw();});
 document.addEventListener('keydown',function(e){
-  if(e.code==='Space'&&['TEXTAREA','INPUT','SELECT'].indexOf(e.target.tagName)<0&&e.target.id!=='rollwrap'){e.preventDefault();playing?pause():play();}
+  if(e.code==='Space'&&['TEXTAREA','INPUT','SELECT'].indexOf(e.target.tagName)<0&&e.target.id!=='rollbox'){e.preventDefault();playing?pause():play();}
 });
 })();
 </script>
