@@ -163,7 +163,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
     <button class="btn sm" id="pgSel">Go to selected</button>
     <label class="mini"><input type="checkbox" id="pgFollow" checked> follow playback</label>
     <span class="spacer"></span>
-    <span class="gridhint">click a pitch to set the note · <code>?d</code> length · <code>?o</code> octave · <code>×</code> deletes · <code>+</code> adds</span>
+    <span class="gridhint">click a pitch to set it, click it again to silence it into a rest · <code>?d</code> length · <code>?o</code> octave · <kbd>del</kbd> or <code>×</code> removes the column · <kbd>ctrl/⌘ Z</kbd> undo</span>
   </div>
   <div class="readout">
     <span id="rTime"><b>0:00</b> / 0:00</span>
@@ -177,6 +177,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
   <button class="btn primary" id="play">Play</button>
   <button class="btn" id="stop">Stop</button>
   <button class="btn" id="undo">Undo</button>
+  <button class="btn" id="redo">Redo</button>
   <button class="btn" id="full">Full screen</button>
   <span class="hint">Click a cell in the grid to set a note · the <code>+</code> column adds one · drag the grid's bottom edge to make it taller</span>
 </div>
@@ -462,8 +463,18 @@ el('tape').addEventListener('click',function(e){
 });
 
 /* ---------- plumbing ---------- */
-var undoStack=[],findHint=0;
-function snap(){undoStack.push(serialize(parsed));if(undoStack.length>80)undoStack.shift();}
+var undoStack=[],redoStack=[],findHint=0;
+function snap(){undoStack.push(serialize(parsed));if(undoStack.length>80)undoStack.shift();redoStack=[];}
+function doUndo(){
+  if(!undoStack.length)return toast('Nothing to undo');
+  redoStack.push(serialize(parsed));
+  el('src').value=undoStack.pop();fullParse();toast('Undone');
+}
+function doRedo(){
+  if(!redoStack.length)return toast('Nothing to redo');
+  undoStack.push(serialize(parsed));
+  el('src').value=redoStack.pop();fullParse();toast('Redone');
+}
 function rebuild(){song=build();layout();counts();readout(position());inspector();}
 function syncText(){el('src').value=serialize(parsed);counts();}
 function counts(){
@@ -593,10 +604,8 @@ el('insBefore').addEventListener('click',function(){
 });
 el('prevBtn').addEventListener('click',function(){selectIdx(sel-1,true);});
 el('nextBtn').addEventListener('click',function(){selectIdx(sel+1,true);});
-el('undo').addEventListener('click',function(){
-  if(!undoStack.length)return toast('Nothing to undo');
-  el('src').value=undoStack.pop();fullParse();toast('Undone');
-});
+el('undo').addEventListener('click',doUndo);
+el('redo').addEventListener('click',doRedo);
 
 /* ---------- note grid ---------- */
 var PAGE=400,page=0,gridCols={},nowCol=-1;
@@ -741,10 +750,11 @@ el('grid').addEventListener('click',function(e){
     if(p==='rest')addRest();else addPitch(parseInt(p,10),pen.oct);
     return;
   }
-  var i=parseInt(td.dataset.c,10);
+  var i=parseInt(td.dataset.c,10),lit=td.classList.contains('on');
   sel=i;
+  el('gridwrap').focus({preventScroll:true});
   withSel(function(k){
-    if(p==='rest'){k.p=true;return;}
+    if(p==='rest'||lit){k.p=true;return;}
     if(k.p&&k.oct==null)k.oct=pen.oct;
     setPitchIdx(k,p);
   });
@@ -770,7 +780,7 @@ el('pgSel').addEventListener('click',function(){goToSel(false);});
 el('gridwrap').addEventListener('keydown',function(e){
   var k=e.key;
   if(e.ctrlKey||e.metaKey){
-    if(k==='z'){el('undo').click();e.preventDefault();}
+    if(k==='z'||k==='Z'){e.shiftKey?doRedo():doUndo();e.preventDefault();}
     else if(k==='d'){el('dupBtn').click();e.preventDefault();}
     return;
   }
@@ -811,7 +821,7 @@ el('full').addEventListener('click',function(){
     setTimeout(layout,80);
   });
 });
-el('src').addEventListener('input',function(){stop();undoStack=[];fullParse();});
+el('src').addEventListener('input',function(){stop();undoStack=[];redoStack=[];fullParse();});
 el('tempo').addEventListener('input',function(){el('vTempo').textContent=parseFloat(el('tempo').value).toFixed(2)+'×';restart();});
 el('trans').addEventListener('input',function(){var v=el('trans').value;el('vTrans').textContent=(v>0?'+':'')+v;restart();});
 el('bpm').addEventListener('input',function(){el('vBpm').textContent=el('bpm').value;parsed.b=parseInt(el('bpm').value,10);edited();});
@@ -926,6 +936,13 @@ try{var th=localStorage.getItem('rtttl.theme');if(th)document.documentElement.se
 el('src').value=EXAMPLES[0][1];
 fullParse();libDraw();
 document.addEventListener('keydown',function(e){
+  var tag=e.target.tagName;
+  if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')&&['TEXTAREA','INPUT'].indexOf(tag)<0){
+    e.preventDefault();e.shiftKey?doRedo():doUndo();return;
+  }
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||e.key==='Y')&&['TEXTAREA','INPUT'].indexOf(tag)<0){
+    e.preventDefault();doRedo();return;
+  }
   if(e.code==='Space'&&['TEXTAREA','INPUT','SELECT'].indexOf(e.target.tagName)<0&&e.target.id!=='gridwrap'){e.preventDefault();playing?pause():play();}
 });
 })();
