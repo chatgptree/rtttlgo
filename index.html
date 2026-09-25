@@ -34,7 +34,7 @@
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{margin:0;background:var(--bg);color:var(--text);font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%;overflow-x:hidden}
 .wrap{max-width:1060px;margin:0 auto;padding:18px 16px 72px;position:relative;z-index:1}
-header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+header{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:14px}
 h1{font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:800;font-size:30px;letter-spacing:.01em;
   margin:0;color:var(--text)}
 :root[data-theme="gay"] h1{
@@ -74,7 +74,11 @@ h1{font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:800;font-size
 @keyframes rise{from{transform:translate3d(0,112vh,0) rotate(0deg)}to{transform:translate3d(0,-20vh,0) rotate(400deg)}}
 @keyframes drift{from{transform:translate3d(-22vw,0,0)}to{transform:translate3d(122vw,0,0)}}
 @media (prefers-reduced-motion:reduce){h1,h1::before,h1::after,.fab span,:root[data-theme="gay"] body{animation:none!important}}
-.sub{color:var(--text-soft);font-size:14px;max-width:60ch;margin:0}
+.brand{display:flex;flex-direction:column;gap:1px}
+.sub{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px;color:var(--text-soft);
+  margin:0;letter-spacing:.03em;padding-left:2px}
+:root[data-theme="gay"] .sub{color:#ff1e9c;font-weight:600;
+  text-shadow:0 0 8px rgba(255,30,156,.35)}
 .spacer{flex:1 1 auto}
 button,select,input{font-family:inherit;font-size:14px;color:var(--text)}
 .btn{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:7px 12px;cursor:pointer;line-height:1.2}
@@ -252,7 +256,10 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
 <div class="wrap">
 
 <header>
-  <h1 id="wordmark" data-text="RTTTL-GO">RTTTL-GO</h1>
+  <div class="brand">
+    <h1 id="wordmark" data-text="RTTTL-GO">RTTTL-GO</h1>
+    <p class="sub">Lil'Lazy's Hot to Go!</p>
+  </div>
   <div class="spacer"></div>
   <button class="btn" id="theme"><span id="thBoring">Boring</span> / <span id="thGay">Gay</span></button>
 </header>
