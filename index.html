@@ -253,6 +253,25 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
 <div class="chunks" id="chunks"></div>
 
 <hr class="hr">
+<h2>Export for firmware</h2>
+<p class="note">Turns the tune into arrays you can paste straight into a sketch. Durations are in milliseconds at the tune's own BPM, so the playback tempo slider doesn't affect them.</p>
+<div class="row">
+  <label class="mini">Format
+    <select id="expFmt">
+      <option value="notes">Arduino arrays — NOTE_ constants</option>
+      <option value="freq">Arduino arrays — frequencies in Hz</option>
+      <option value="struct">Arduino array of structs</option>
+      <option value="cstring">C string (RTTTL, for an RTTTL library)</option>
+      <option value="python">Python lists</option>
+    </select>
+  </label>
+  <label class="mini">Variable name <input type="text" id="expName" style="width:150px"></label>
+  <label class="mini"><input type="checkbox" id="expWrap" checked> group lines by phrase</label>
+  <button class="btn" id="expCopy">Copy</button>
+</div>
+<textarea id="expOut" spellcheck="false" readonly style="min-height:220px;margin-top:10px"></textarea>
+
+<hr class="hr">
 <p class="note">Octave 4 is middle C (a4 = 440 Hz), matching the common Arduino RTTTL libraries. Flats, dotted notes, <code>h</code> for B and missing headers all parse; unreadable tokens are underlined in red rather than dropped silently.</p>
 
 </div>
@@ -498,15 +517,16 @@ function fullParse(){
   el('bpm').value=clamp(parsed.b,5,900);el('vBpm').textContent=parsed.b;
   pen.oct=clamp(parsed.o,0,9);pen.dur=parsed.d;
   sel=Math.min(sel,parsed.tokens.length-1);
-  rebuild();status();tape();renderList();
+  rebuild();status();tape();renderList();syncExport();
 }
 function edited(){
   var keep=sel;
   syncText();
   parsed=parse(el('src').value);
   sel=clamp(keep,-1,parsed.tokens.length-1);
-  rebuild();status();tape();renderList();
+  rebuild();status();tape();renderList();syncExport();
 }
+function syncExport(){if(el('expName').value.trim()==='')el('expName').value=slug(parsed.name);buildExport();}
 function fmt(s){s=Math.max(0,s);var m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+(x<10?'0':'')+x;}
 function toast(msg){var t=el('toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on');},1600);}
 function noteIndexAt(p){
@@ -608,7 +628,9 @@ el('undo').addEventListener('click',doUndo);
 el('redo').addEventListener('click',doRedo);
 
 /* ---------- note grid ---------- */
-var PAGE=400,page=0,gridCols={},nowCol=-1;
+var PAGE=400,page=0,gridCols={},nowCol=-1,userHold=0;
+function held(){return Date.now()-userHold<5000;}
+function touchHold(){userHold=Date.now();}
 function pageCount(){return Math.max(1,Math.ceil(parsed.tokens.length/PAGE));}
 function mkTh(cls,txt){var t=document.createElement('th');t.className=cls;t.textContent=txt;return t;}
 function durOpts(sel,tok){
@@ -627,7 +649,7 @@ function renderList(){
   var many=pageCount()>1;
   ['pgPrev','pgNext','pgSel'].forEach(function(id){el(id).style.display=many?'':'none';});
   el('pgInfo').textContent=n?(many?('notes '+(start+1)+'\u2013'+end+' of '+n+'   \u00b7   page '+(page+1)+'/'+pageCount()):n+' notes'):'no notes yet';
-  var t=el('grid'),i,r;
+  var t=el('grid'),i,r,keepScroll=el('gridwrap').scrollLeft;
   t.innerHTML='';gridCols={};
 
   var cg=document.createElement('colgroup');
@@ -694,7 +716,7 @@ function renderList(){
   if(addCol)orr.appendChild(document.createElement('td'));
   tf.appendChild(orr);
   t.appendChild(tf);
-
+  el('gridwrap').scrollLeft=keepScroll;
   paintCols();
 }
 function paintCols(){
@@ -706,30 +728,34 @@ function paintCols(){
 }
 function markListSel(){paintCols();}
 function markListNow(i){
-  if(i===nowCol&&!(el('pgFollow').checked&&i>=0&&Math.floor(i/PAGE)!==page))return;
+  if(i===nowCol)return;
   nowCol=i;
-  if(el('pgFollow').checked&&i>=0){
-    var want=Math.floor(i/PAGE);
-    if(want!==page){page=want;renderList();return;}
-    if(gridCols[i]){
-      var box=el('gridwrap'),cells=el('grid').querySelectorAll('td[data-c="'+i+'"]');
-      if(cells.length){
-        var x=cells[0].offsetLeft;
-        if(x<box.scrollLeft+60||x>box.scrollLeft+box.clientWidth-60)box.scrollLeft=Math.max(0,x-box.clientWidth*0.4);
-      }
-    }
-  }
   paintCols();
+  if(!el('pgFollow').checked||i<0||held())return;
+  var want=Math.floor(i/PAGE);
+  if(want!==page){page=want;renderList();paintCols();return;}
+  var box=el('gridwrap'),cell=el('grid').querySelector('td[data-c="'+i+'"]');
+  if(!cell)return;
+  var x=cell.offsetLeft,w=cell.offsetWidth;
+  if(x<box.scrollLeft||x+w>box.scrollLeft+box.clientWidth-8)
+    box.scrollLeft=Math.max(0,x-box.clientWidth*0.35);
 }
 function goToSel(quiet){
   if(sel<0){if(!quiet)toast('Nothing selected');return;}
   var want=Math.floor(sel/PAGE);
   if(want!==page){page=want;renderList();}
-  var cells=el('grid').querySelectorAll('td[data-c="'+sel+'"]');
-  if(cells.length)el('gridwrap').scrollLeft=Math.max(0,cells[0].offsetLeft-el('gridwrap').clientWidth*0.4);
+  var box=el('gridwrap'),cell=el('grid').querySelector('td[data-c="'+sel+'"]');
+  if(cell){
+    var x=cell.offsetLeft,w=cell.offsetWidth;
+    var off = x<box.scrollLeft || x+w>box.scrollLeft+box.clientWidth-8;
+    if(off&&!(quiet&&held()))box.scrollLeft=Math.max(0,x-box.clientWidth*0.35);
+  }
   paintCols();
 }
+el('gridwrap').addEventListener('scroll',touchHold);
+el('gridwrap').addEventListener('pointerdown',touchHold);
 el('gridwrap').addEventListener('wheel',function(e){
+  touchHold();
   var d=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;
   if(!d)return;
   var box=el('gridwrap'),before=box.scrollLeft;
@@ -909,6 +935,91 @@ function libDraw(){
 el('save').addEventListener('click',function(){
   var text=el('src').value.trim();if(!text)return toast('Nothing to save');
   var a=libRead();a.unshift({name:(parsed.name||'untitled').slice(0,24),text:text});libWrite(a);libDraw();toast('Saved in this browser');
+});
+
+/* ---------- firmware export ---------- */
+var CNAME=['C','CS','D','DS','E','F','FS','G','GS','A','AS','B'];
+function slug(x){
+  x=(x||'tune').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  if(!x)x='tune';
+  if(/^[0-9]/.test(x))x='t'+x;
+  return x.charAt(0).toLowerCase()+x.slice(1);
+}
+function exportRows(){
+  var whole=(60000/parsed.b)*4,rows=[],t=0;
+  parsed.tokens.forEach(function(k){
+    var ms=Math.round(whole/k.dur*(k.dotted?1.5:1));
+    var midi=k.p?null:midiOf(k);
+    rows.push({
+      rest:!!k.p,
+      name:k.p?'NOTE_REST':('NOTE_'+CNAME[k.idx]+k.oct),
+      hz:k.p?0:Math.round(440*Math.pow(2,(midi-69)/12)),
+      ms:ms,at:Math.round(t)
+    });
+    t+=ms;
+  });
+  return rows;
+}
+function lineGroups(rows,byPhrase){
+  var out=[],cur=[];
+  rows.forEach(function(r,i){
+    var prev=rows[i-1];
+    if(cur.length&&((byPhrase&&prev&&prev.rest!==r.rest)||cur.length>=8)){out.push(cur);cur=[];}
+    cur.push(i);
+  });
+  if(cur.length)out.push(cur);
+  return out;
+}
+function wrapSource(str){
+  var out=[],line='',parts=str.split(',');
+  parts.forEach(function(p,i){
+    var bit=p+(i<parts.length-1?',':'');
+    if(line.length+bit.length>92){out.push(line);line='';}
+    line+=bit;
+  });
+  if(line)out.push(line);
+  return out.map(function(l,i){return (i?'//         ':'// Source: ')+l;}).join('\n');
+}
+function buildExport(){
+  var fmt=el('expFmt').value,nm=slug(el('expName').value||parsed.name),rows=exportRows();
+  if(!rows.length){el('expOut').value='';return;}
+  var total=rows.reduce(function(a,r){return a+r.ms;},0);
+  var head='// '+(parsed.name||'tune')+' \u2014 '+rows.length+' notes, '+total+' ms @ '+parsed.b+' BPM\n'+
+           wrapSource(serialize(parsed))+'\n';
+  var groups=lineGroups(rows,el('expWrap').checked),out;
+
+  function block(map){
+    return groups.map(function(g){
+      return '    '+g.map(map).join(', ')+',';
+    }).join('\n').replace(/,$/,'');
+  }
+  if(fmt==='notes'||fmt==='freq'){
+    var val=fmt==='notes'?function(i){return rows[i].name;}:function(i){return String(rows[i].hz);};
+    out=head+
+      (fmt==='notes'?'// NOTE_* come from pitches.h; NOTE_REST should be 0.\n':'// Frequencies in Hz; 0 means a rest.\n')+
+      'const int '+nm+'Notes[] = {\n'+block(val)+'\n};\n'+
+      'const int '+nm+'Durations[] = {\n'+block(function(i){return String(rows[i].ms);})+'\n};\n'+
+      'const int '+nm+'Length = '+rows.length+';\n';
+  } else if(fmt==='struct'){
+    out=head+'struct Tone { int freq; int ms; };  // freq 0 = rest\n'+
+      'const Tone '+nm+'[] = {\n'+
+      groups.map(function(g){return '    '+g.map(function(i){return '{'+rows[i].hz+','+rows[i].ms+'}';}).join(', ')+',';}).join('\n').replace(/,$/,'')+
+      '\n};\nconst int '+nm+'Length = '+rows.length+';\n';
+  } else if(fmt==='cstring'){
+    out=head+'const char '+nm+'[] PROGMEM = "'+serialize(parsed).replace(/"/g,'\\"')+'";\n';
+  } else {
+    out=head.replace(/^\/\//gm,'#').replace(/\n\/\//g,'\n#')+
+      nm+'_notes = [\n'+groups.map(function(g){return '    '+g.map(function(i){return String(rows[i].hz);}).join(', ')+',';}).join('\n').replace(/,$/,'')+'\n]\n'+
+      nm+'_durations = [\n'+groups.map(function(g){return '    '+g.map(function(i){return String(rows[i].ms);}).join(', ')+',';}).join('\n').replace(/,$/,'')+'\n]\n';
+  }
+  el('expOut').value=out;
+}
+['expFmt','expWrap'].forEach(function(id){el(id).addEventListener('change',buildExport);});
+el('expName').addEventListener('input',buildExport);
+el('expCopy').addEventListener('click',function(){
+  var v=el('expOut').value;
+  if(!v)return toast('Nothing to export');
+  if(navigator.clipboard)navigator.clipboard.writeText(v).then(function(){toast('Copied '+v.length+' characters');});
 });
 
 /* ---------- boot ---------- */
