@@ -128,11 +128,11 @@ table.grid{user-select:none;-webkit-user-select:none;-ms-user-select:none;border
   text-align:right;padding:0 8px;min-width:54px;white-space:nowrap;border-right:1px solid var(--grid);border-bottom:1px solid var(--grid)}
 .grid th.lbl.blk{opacity:.6}
 .grid thead th{position:sticky;top:0;z-index:2;background:var(--panel);border-bottom:1px solid var(--grid);
-  font-weight:400;color:var(--key-txt);font-size:10px;padding:2px 0;min-width:var(--cellw,30px)}
+  font-weight:400;color:var(--key-txt);font-size:10px;padding:2px 0;min-width:var(--cellw,36px)}
 .grid thead th.num{cursor:pointer}
 .grid thead th.num:hover{color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
 .grid thead th.lbl{z-index:4}
-.grid tbody td{width:var(--cellw,30px);min-width:var(--cellw,30px);height:22px;padding:0;cursor:pointer;
+.grid tbody td{width:var(--cellw,36px);min-width:var(--cellw,36px);height:22px;padding:0;cursor:pointer;
   border-right:1px solid var(--grid);border-bottom:1px solid var(--grid)}
 .grid tbody td:hover{box-shadow:inset 0 0 0 1px var(--note)}
 .grid tbody td.on{background:var(--note)}
@@ -160,14 +160,15 @@ table.grid{user-select:none;-webkit-user-select:none;-ms-user-select:none;border
 .grid thead th.over{color:var(--bad)}
 .grid td.overstart,.grid th.overstart{border-left:2px solid var(--sel)}
 .grid tbody td.newcell:hover{box-shadow:inset 0 0 0 1px var(--sel)}
-.grid tfoot td{padding:0;background:var(--panel);border-right:1px solid var(--grid);border-top:1px solid var(--grid);min-width:var(--cellw,30px)}
-.grid tfoot select{width:100%;border:0;background:transparent;color:var(--text);font:inherit;font-size:11px;
-  padding:3px 0;text-align:center;text-align-last:center;cursor:pointer;
+.grid tfoot td{padding:0;background:var(--panel);border-right:1px solid var(--grid);border-top:1px solid var(--grid);min-width:var(--cellw,36px)}
+.grid tfoot select{width:100%;border:0;background:transparent;color:var(--text);font:inherit;font-size:9.5px;
+  padding:3px 0;text-align:center;text-align-last:center;cursor:pointer;letter-spacing:-.04em;
   -webkit-appearance:none;-moz-appearance:none;appearance:none}
 .grid tfoot select:hover{background:var(--bg-2)}
 .grid tfoot th.lbl{font-size:10.5px}
 .grid tfoot select:disabled{opacity:.3}
 .grid tfoot th.lbl{border-top:1px solid var(--grid)}
+.grid th.lbl.foot{font-size:10px;letter-spacing:.04em;text-transform:uppercase;opacity:.85}
 .gridbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 2px 2px;
   font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:var(--key-txt)}
 .gridbar .spacer{flex:1 1 auto}
@@ -332,7 +333,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
     <button class="btn sm" id="cutBtn" disabled>Cut</button>
     <button class="btn sm" id="pasteRange" disabled>Paste</button>
     <span id="rangeInfo"></span>
-    <label class="mini">Zoom <input type="range" id="cellw" min="14" max="90" step="1" value="30"></label>
+    <label class="mini">Zoom <input type="range" id="cellw" min="18" max="90" step="1" value="36"></label>
     <span class="spacer"></span>
     <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over · right-click for a menu · <kbd>del</kbd> removes · <kbd>ctrl/⌘ Z</kbd> undo</span>
   </div>
@@ -601,11 +602,11 @@ function frame(){
 
 /* ---------- timeline ruler, locked to the grid columns ---------- */
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
-var rW=600,rH=30,rdpr=1,rctx=null,labelW=54,cellW=30,pageStart=0,pageEnd=0,nGhost=1;
+var rW=600,rH=30,rdpr=1,rctx=null,labelW=54,cellW=36,pageStart=0,pageEnd=0,nGhost=1;
 function targetSec(){var v=parseFloat(el('target').value);return isFinite(v)&&v>0?v:0;}
 function playScale(){return (totalReal>0&&song.total>0)?(totalReal/song.total):1;}
 function metrics(){
-  cellW=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cellw'))||30;
+  cellW=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cellw'))||36;
   var th=el('grid').querySelector('tbody th.lbl');
   if(th)labelW=th.offsetWidth;
 }
@@ -721,7 +722,7 @@ el('target').addEventListener('input',function(){
   renderList();
 });
 el('cellw').addEventListener('input',function(){
-  var box=el('gridwrap'),old=cellW||30,idx=box.scrollLeft/old;
+  var box=el('gridwrap'),old=cellW||36,idx=box.scrollLeft/old;
   var v=parseInt(el('cellw').value,10);
   document.documentElement.style.setProperty('--cellw',v+'px');
   metrics();box.scrollLeft=idx*v;sizeRuler();touchHold();
@@ -956,7 +957,7 @@ function durOpts(sel,tok){
   DURS.forEach(function(d){
     [['',''],['.','.']].forEach(function(dot){
       var o=document.createElement('option');
-      o.value=d+dot[0];o.textContent=String(d)+dot[1];
+      o.value=d+dot[0];o.textContent=(d===1?'1':'1/'+d)+dot[1];
       sel.appendChild(o);
     });
   });
@@ -1027,7 +1028,7 @@ function renderList(){
   t.appendChild(tb);
 
   var tf=document.createElement('tfoot');
-  var dr=document.createElement('tr');dr.appendChild(mkTh('lbl','?d'));
+  var dr=document.createElement('tr');dr.appendChild(mkTh('lbl foot','duration'));
   for(i=start;i<end;i++){
     var dtd=document.createElement('td'),ds=document.createElement('select');
     ds.dataset.c=i;ds.dataset.k='d';durOpts(ds,parsed.tokens[i]);
@@ -1036,7 +1037,7 @@ function renderList(){
   for(i=0;i<nAdd;i++){var gd=document.createElement('td');gd.className='ghost';dr.appendChild(gd);}
   tf.appendChild(dr);
 
-  var orr=document.createElement('tr');orr.appendChild(mkTh('lbl','?o'));
+  var orr=document.createElement('tr');orr.appendChild(mkTh('lbl foot','octave'));
   for(i=start;i<end;i++){
     var otd=document.createElement('td'),os=document.createElement('select');
     os.dataset.c=i;os.dataset.k='o';
