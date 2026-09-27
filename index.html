@@ -173,6 +173,10 @@ table.grid{user-select:none;-webkit-user-select:none;-ms-user-select:none;border
   font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:var(--key-txt)}
 .gridbar .spacer{flex:1 1 auto}
 #rangeInfo{color:var(--accent)}
+#exportSection{scroll-margin-top:12px}
+#exportSection.flash,.gridwrap.flash{animation:flashring .9s ease}
+@keyframes flashring{0%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 0 rgba(0,0,0,0)}}
+#expErr{color:var(--bad)}
 #ctxmenu{position:fixed;z-index:30;display:none;min-width:186px;padding:4px;
   background:var(--bg-2);border:1px solid var(--line);border-radius:7px;
   box-shadow:0 10px 30px rgba(0,0,0,.2);font-size:13px}
@@ -287,13 +291,14 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
       <span class="srctitle">RTTTL source</span>
       <span class="srcmeta" id="srcMeta"></span>
       <span class="spacer"></span>
-      <span class="srcnote">paste any length · edit by hand · or let the grid write it</span>
+      <span class="srcnote">applies as you type · <b>Import to grid</b> re-checks it and reports any problems</span>
     </div>
       <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
       <p class="status" id="status">—</p>
       
       <div class="tools">
-        <button class="btn primary" id="copy">Copy</button>
+        <button class="btn primary" id="importBtn">Import to grid</button>
+      <button class="btn" id="copy">Copy</button>
         <button class="btn" id="shrink">Shrink</button>
         <button class="btn" id="tidy">Tidy up</button>
         <button class="btn" id="clear">Clear</button>
@@ -334,6 +339,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
     <button class="btn sm" id="pasteRange" disabled>Paste</button>
     <span id="rangeInfo"></span>
     <label class="mini">Zoom <input type="range" id="cellw" min="18" max="90" step="1" value="36"></label>
+    <button class="btn sm" id="jumpExport">Export ↓</button>
     <span class="spacer"></span>
     <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over · right-click for a menu · <kbd>del</kbd> removes · <kbd>ctrl/⌘ Z</kbd> undo</span>
   </div>
@@ -353,6 +359,28 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
   <button class="btn" id="full">Full screen</button>
   <span class="hint">Click a cell in the grid to set a note · the <code>+</code> column adds one · drag the grid's bottom edge to make it taller</span>
 </div>
+
+<section id="exportSection">
+<h2>Export for firmware</h2>
+<p class="note">Turns the tune into arrays you can paste straight into a sketch. Durations are in milliseconds at the tune's own BPM, so the playback tempo slider doesn't affect them.</p>
+<div class="row">
+  <label class="mini">Format
+    <select id="expFmt">
+      <option value="notes">Arduino arrays — NOTE_ constants</option>
+      <option value="freq">Arduino arrays — frequencies in Hz</option>
+      <option value="struct">Arduino array of structs</option>
+      <option value="cstring">C string (RTTTL, for an RTTTL library)</option>
+      <option value="python">Python lists</option>
+    </select>
+  </label>
+  <label class="mini">Variable name <input type="text" id="expName" style="width:150px"></label>
+  <label class="mini"><input type="checkbox" id="expWrap" checked> group lines by phrase</label>
+  <button class="btn" id="expCopy">Copy</button>
+</div>
+<p class="status" id="expErr" style="display:none"></p>
+<textarea id="expOut" spellcheck="false" readonly style="min-height:220px;margin-top:10px"></textarea>
+</section>
+<hr class="hr">
 
 
 
@@ -426,25 +454,6 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
   <span class="status" id="splitInfo"></span>
 </div>
 <div class="chunks" id="chunks"></div>
-
-<hr class="hr">
-<h2>Export for firmware</h2>
-<p class="note">Turns the tune into arrays you can paste straight into a sketch. Durations are in milliseconds at the tune's own BPM, so the playback tempo slider doesn't affect them.</p>
-<div class="row">
-  <label class="mini">Format
-    <select id="expFmt">
-      <option value="notes">Arduino arrays — NOTE_ constants</option>
-      <option value="freq">Arduino arrays — frequencies in Hz</option>
-      <option value="struct">Arduino array of structs</option>
-      <option value="cstring">C string (RTTTL, for an RTTTL library)</option>
-      <option value="python">Python lists</option>
-    </select>
-  </label>
-  <label class="mini">Variable name <input type="text" id="expName" style="width:150px"></label>
-  <label class="mini"><input type="checkbox" id="expWrap" checked> group lines by phrase</label>
-  <button class="btn" id="expCopy">Copy</button>
-</div>
-<textarea id="expOut" spellcheck="false" readonly style="min-height:220px;margin-top:10px"></textarea>
 
 <hr class="hr">
 <p class="note">Octave 4 is middle C (a4 = 440 Hz), matching the common Arduino RTTTL libraries. Flats, dotted notes, <code>h</code> for B and missing headers all parse; unreadable tokens are underlined in red rather than dropped silently.</p>
@@ -615,6 +624,7 @@ function colDur(i){var k=parsed.tokens[i];return k?realSecOf(k):ghostSec;}
 function xOfReal(tr){
   if(!parsed.tokens.length)return labelW;
   for(var i=pageStart;i<pageEnd;i++){
+    if(colStart[i]==null)return colX(i);
     var d=colDur(i);
     if(tr<colStart[i]+d||i===pageEnd-1)return colX(i)+Math.max(0,Math.min(1,(tr-colStart[i])/d))*cellW;
   }
@@ -623,7 +633,7 @@ function xOfReal(tr){
 function realOfX(x){
   var i=Math.floor((x-labelW)/cellW)+pageStart;
   if(i<pageStart)return 0;
-  if(i>=pageEnd)return totalReal;
+  if(i>=pageEnd||colStart[i]==null)return totalReal;
   var f=((x-labelW)/cellW)-(i-pageStart);
   return colStart[i]+clamp(f,0,1)*colDur(i);
 }
@@ -632,7 +642,8 @@ function realOfXSnapped(x){
   if(x<labelW)return 0;
   var i=Math.floor((x-labelW)/cellW)+pageStart;
   if(i>=pageEnd)return totalReal;
-  return colStart[clamp(i,pageStart,pageEnd-1)];
+  var v=colStart[clamp(i,pageStart,Math.max(pageStart,pageEnd-1))];
+  return v==null?totalReal:v;
 }
 function sizeRuler(){
   var c=el('ruler');if(!c)return;
@@ -659,6 +670,7 @@ function drawRuler(){
   g.font='9px "JetBrains Mono", ui-monospace, monospace';g.textBaseline='alphabetic';
   var every=Math.max(1,Math.ceil(42/cellW)),shown=0;
   for(var i=pageStart;i<pageEnd;i++){
+    if(colStart[i]==null)break;
     var x=Math.round(colX(i))+0.5,major=((i-pageStart)%every===0);
     g.fillStyle=css('--grid');g.fillRect(x,rH-9,1,major?9:4);
     if(major&&x<rW-24){
@@ -945,6 +957,8 @@ function computeBounds(){
   totalReal=t;
   overFrom=-1;
   if(tg>0)for(var i=0;i<colStart.length;i++){if(colStart[i]>=tg-1e-9){overFrom=i;break;}}
+  pageEnd=Math.min(pageEnd,colStart.length);
+  pageStart=clamp(pageStart,0,Math.max(0,pageEnd));
   ghostSec=(60000/parsed.b)*4/1000/pen.dur*(pen.dot?1.5:1);
   ghosts=1;
   if(tg>totalReal+1e-9)ghosts=Math.min(400,Math.max(1,Math.ceil((tg-totalReal)/ghostSec-1e-9)));
@@ -1599,7 +1613,12 @@ function wrapSource(str){
 }
 function buildExport(){
   var fmt=el('expFmt').value,nm=slug(el('expName').value||parsed.name),rows=exportRows();
-  if(!rows.length){el('expOut').value='';return;}
+  if(!rows.length){
+    el('expOut').value='';
+    el('expErr').style.display=el('src').value.trim()?'':'none';
+    if(el('src').value.trim())el('expErr').textContent='Nothing to export \u2014 no readable notes in the source.';
+    return;
+  }
   var total=rows.reduce(function(a,r){return a+r.ms;},0);
   var head='// '+(parsed.name||'tune')+' \u2014 '+rows.length+' notes, '+total+' ms @ '+parsed.b+' BPM\n'+
            wrapSource(serialize(parsed))+'\n';
@@ -1630,10 +1649,39 @@ function buildExport(){
       nm+'_durations = [\n'+groups.map(function(g){return '    '+g.map(function(i){return String(rows[i].ms);}).join(', ')+',';}).join('\n').replace(/,$/,'')+'\n]\n';
   }
   el('expOut').value=out;
+  var eb=el('expErr');
+  if(parsed.errors.length){
+    eb.style.display='';
+    eb.textContent='Heads up \u2014 '+parsed.errors.length+' token'+(parsed.errors.length>1?'s':'')+
+      " in the source couldn't be read and are missing from this export: "+
+      parsed.errors.slice(0,8).map(function(e){return '#'+(e.i+1)+' "'+e.tok+'"';}).join('  ')+
+      (parsed.errors.length>8?'  \u2026':'');
+  } else eb.style.display='none';
 }
 ['expFmt','expWrap'].forEach(function(id){el(id).addEventListener('change',buildExport);});
 var expNameDirty=false;
 el('expName').addEventListener('input',function(){expNameDirty=el('expName').value.trim()!=='';buildExport();});
+function flash(id){var e=el(id);if(!e)return;e.classList.remove('flash');void e.offsetWidth;e.classList.add('flash');}
+el('importBtn').addEventListener('click',function(){
+  var txt=el('src').value.trim();
+  if(!txt)return toast('Nothing in the source box to import');
+  stop();undoStack=[];redoStack=[];
+  fullParse();
+  el('gridwrap').scrollLeft=0;
+  flash('gridwrap');
+  el('gridwrap').scrollIntoView({behavior:'smooth',block:'nearest'});
+  if(parsed.errors.length)
+    toast('Imported '+parsed.tokens.length+' notes \u2014 '+parsed.errors.length+" couldn't be read");
+  else if(!parsed.tokens.length)
+    toast("Nothing playable in there \u2014 check it starts with name:d=..,o=..,b=..:");
+  else
+    toast('Imported '+parsed.tokens.length+' notes \u00b7 '+totalReal.toFixed(1)+' s');
+});
+el('jumpExport').addEventListener('click',function(){
+  buildExport();
+  el('exportSection').scrollIntoView({behavior:'smooth',block:'start'});
+  flash('exportSection');
+});
 el('expCopy').addEventListener('click',function(){
   var v=el('expOut').value;
   if(!v)return toast('Nothing to export');
