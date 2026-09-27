@@ -169,6 +169,8 @@ table.grid{user-select:none;-webkit-user-select:none;-ms-user-select:none;border
 .grid tfoot select:disabled{opacity:.3}
 .grid tfoot th.lbl{border-top:1px solid var(--grid)}
 .grid th.lbl.foot{font-size:10px;letter-spacing:.04em;text-transform:uppercase;opacity:.85}
+.transport.ingrid{margin:9px 0 2px;gap:7px}
+#toolsFold .foldbody{padding:2px 0 4px}
 .gridbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 2px 2px;
   font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:var(--key-txt)}
 .gridbar .spacer{flex:1 1 auto}
@@ -328,20 +330,33 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
     <span id="tlFill"></span>
   </div>
   <div class="gridwrap" id="gridwrap" tabindex="0"><div class="gridinner" id="gridinner"><canvas id="ruler"></canvas><table class="grid" id="grid"></table><div id="playline"></div></div></div>
-  <div class="gridbar" id="listCtl">
-    <button class="btn sm" id="pgPrev">◀</button>
-    <span id="pgInfo"></span>
-    <button class="btn sm" id="pgNext">▶</button>
-    <button class="btn sm" id="pgSel">Go to selected</button>
-    <label class="mini"><input type="checkbox" id="pgFollow" checked> follow playback</label>
-    <button class="btn sm" id="copyRange" disabled>Copy</button>
-    <button class="btn sm" id="cutBtn" disabled>Cut</button>
-    <button class="btn sm" id="pasteRange" disabled>Paste</button>
-    <span id="rangeInfo"></span>
-    <label class="mini">Zoom <input type="range" id="cellw" min="18" max="90" step="1" value="36"></label>
-    <button class="btn sm" id="jumpExport">Export ↓</button>
-    <span class="spacer"></span>
-    <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over · right-click for a menu · <kbd>del</kbd> removes · <kbd>ctrl/⌘ Z</kbd> undo</span>
+  <div class="transport ingrid">
+    <button class="btn primary" id="play">Play</button>
+    <button class="btn" id="stop">Stop</button>
+    <button class="btn" id="undo">Undo</button>
+    <button class="btn" id="redo">Redo</button>
+    <button class="btn" id="full">Full screen</button>
+    <span class="hint">Click a cell in the grid to set a note · the <code>+</code> column adds one · drag the grid's bottom edge to make it taller</span>
+  </div>
+  <div class="fold" id="toolsFold">
+    <button class="foldhead" id="toolsHead" aria-expanded="false">Grid tools <span class="foldmeta" id="toolsMeta"></span></button>
+    <div class="foldbody" id="toolsBody" hidden>
+    <div class="gridbar" id="listCtl">
+      <button class="btn sm" id="pgPrev">◀</button>
+      <span id="pgInfo"></span>
+      <button class="btn sm" id="pgNext">▶</button>
+      <button class="btn sm" id="pgSel">Go to selected</button>
+      <label class="mini"><input type="checkbox" id="pgFollow" checked> follow playback</label>
+      <button class="btn sm" id="copyRange" disabled>Copy</button>
+      <button class="btn sm" id="cutBtn" disabled>Cut</button>
+      <button class="btn sm" id="pasteRange" disabled>Paste</button>
+      <span id="rangeInfo"></span>
+      <label class="mini">Zoom <input type="range" id="cellw" min="18" max="90" step="1" value="36"></label>
+      <button class="btn sm" id="jumpExport">Export ↓</button>
+      <span class="spacer"></span>
+      <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over · right-click for a menu · <kbd>del</kbd> removes · <kbd>ctrl/⌘ Z</kbd> undo</span>
+    </div>
+    </div>
   </div>
   <div class="readout">
     <span id="rTime"><b>0:00</b> / 0:00</span>
@@ -349,15 +364,6 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
     <span id="rNotes"><b>0</b> notes</span>
     <span id="rChars"><b>0</b> chars</span>
   </div>
-</div>
-
-<div class="transport">
-  <button class="btn primary" id="play">Play</button>
-  <button class="btn" id="stop">Stop</button>
-  <button class="btn" id="undo">Undo</button>
-  <button class="btn" id="redo">Redo</button>
-  <button class="btn" id="full">Full screen</button>
-  <span class="hint">Click a cell in the grid to set a note · the <code>+</code> column adds one · drag the grid's bottom edge to make it taller</span>
 </div>
 
 <section id="exportSection">
@@ -1137,6 +1143,8 @@ window.addEventListener('pointerup',function(){
 function rangeInfo(){
   var n=rangeA<0?0:rangeHi()-rangeLo()+1;
   el('rangeInfo').textContent=n?(n+' selected'+(clip?'  \u00b7  '+clip.length+' copied':'')):(clip?clip.length+' copied':'');
+  el('toolsMeta').textContent=parsed.tokens.length+' notes'+
+    (n?'  \u00b7  '+n+' selected':'')+(clip?'  \u00b7  '+clip.length+' copied':'');
   el('cutBtn').disabled=el('copyRange').disabled=(rangeA<0);
   el('pasteRange').disabled=!clip;
 }
@@ -1464,6 +1472,7 @@ function fold(headId,bodyId,key,openByDefault){
 }
 fold('inspHead','inspBody','rtttl.fold.edit',false);
 fold('verHead','verBody','rtttl.fold.versions',false);
+fold('toolsHead','toolsBody','rtttl.fold.tools',false);
 
 /* ---------- versions ---------- */
 var VMAX=24;
