@@ -253,7 +253,16 @@ table.grid{user-select:none;-webkit-user-select:none;-ms-user-select:none;border
 .knobs{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:22px}
 .knob{display:flex;flex-direction:column;gap:4px;min-width:116px}
 .knob span{font-size:12.5px;color:var(--text-soft)}
-.knob input[type=range]{width:116px;accent-color:var(--accent)}
+.knob input[type=range]{width:104px;accent-color:var(--accent)}
+.knobrow{display:flex;align-items:center;gap:5px}
+.vhide{display:none}
+input[type=number].numbox{width:44px;padding:2px 4px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;
+  background:var(--bg-2);border:1px solid var(--line);border-radius:3px;color:var(--text);text-align:right;
+  -moz-appearance:textfield}
+.numbox::-webkit-outer-spin-button,.numbox::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.numbox:focus{outline:2px solid var(--accent);outline-offset:1px}
+.knobrow i{font-style:normal;font-size:11.5px;color:var(--text-soft);min-width:10px}
+input[type=number].gridbar-num,.gridbar input[type=number].numbox{width:40px}
 select{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:6px 8px}
 
 label.field{display:block;font-size:13px;color:var(--text-soft);margin:0 0 6px}
@@ -355,7 +364,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
       <button class="btn sm" id="cutBtn" disabled>Cut</button>
       <button class="btn sm" id="pasteRange" disabled>Paste</button>
       <span id="rangeInfo"></span>
-      <label class="mini">Zoom <input type="range" id="cellw" min="18" max="90" step="1" value="36"></label>
+      <label class="mini">Zoom <input type="range" id="cellw" min="18" max="90" step="1" value="36"><input type="number" class="numbox" id="cellwN" min="18" max="90" step="1"></label>
       <span class="spacer"></span>
       <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over · right-click for a menu · <kbd>del</kbd> removes · <kbd>ctrl/⌘ Z</kbd> undo</span>
     </div>
@@ -369,29 +378,25 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
   </div>
 </div>
 
-<section id="exportSection">
-<h2>Export for firmware</h2>
-<p class="note">Turns the tune into arrays you can paste straight into a sketch. Durations are in milliseconds at the tune's own BPM, so the playback tempo slider doesn't affect them.</p>
-<div class="row">
-  <label class="mini">Format
-    <select id="expFmt">
-      <option value="notes">Arduino arrays — NOTE_ constants</option>
-      <option value="freq">Arduino arrays — frequencies in Hz</option>
-      <option value="struct">Arduino array of structs</option>
-      <option value="cstring">C string (RTTTL, for an RTTTL library)</option>
-      <option value="python">Python lists</option>
-    </select>
-  </label>
-  <label class="mini">Variable name <input type="text" id="expName" style="width:150px"></label>
-  <label class="mini"><input type="checkbox" id="expWrap" checked> group lines by phrase</label>
-  <button class="btn" id="expCopy">Copy</button>
+<div class="knobs">
+  <label class="knob"><span>Tempo</span>
+    <span class="knobrow"><input type="range" id="tempo" min="0.25" max="3" step="0.05" value="1"><input type="number" class="numbox" id="tempoN" min="0.25" max="3" step="0.05"><i>×</i></span>
+    <span class="vhide"><b id="vTempo">1.00×</b></span></label>
+  <label class="knob"><span>Transpose</span>
+    <span class="knobrow"><input type="range" id="trans" min="-24" max="24" step="1" value="0"><input type="number" class="numbox" id="transN" min="-24" max="24" step="1"><i>st</i></span>
+    <span class="vhide"><b id="vTrans">0</b></span></label>
+  <label class="knob"><span>Volume</span>
+    <span class="knobrow"><input type="range" id="vol" min="0" max="100" step="1" value="60"><input type="number" class="numbox" id="volN" min="0" max="100" step="1"><i>%</i></span>
+    <span class="vhide"><b id="vVol">60</b></span></label>
+  <label class="knob"><span>Note gap</span>
+    <span class="knobrow"><input type="range" id="gap" min="0" max="40" step="1" value="8"><input type="number" class="numbox" id="gapN" min="0" max="40" step="1"><i>%</i></span>
+    <span class="vhide"><b id="vGap">8</b></span></label>
+  <label class="knob"><span>BPM</span>
+    <span class="knobrow"><input type="range" id="bpm" min="5" max="900" step="1" value="63"><input type="number" class="numbox" id="bpmN" min="5" max="900" step="1"></span>
+    <span class="vhide"><b id="vBpm">63</b></span></label>
+  <label class="knob"><span>Voice</span>
+    <select id="wave"><option value="square">Square (piezo)</option><option value="sawtooth">Saw</option><option value="triangle">Triangle</option><option value="sine">Sine</option></select></label>
 </div>
-<p class="status" id="expErr" style="display:none"></p>
-<textarea id="expOut" spellcheck="false" readonly style="min-height:220px;margin-top:10px"></textarea>
-</section>
-<hr class="hr">
-
-
 
 <div class="inspector fold" id="inspector">
   <button class="foldhead" id="inspHead" aria-expanded="false">Editing <span class="foldmeta insp-title" id="selInfo">nothing selected</span></button>
@@ -421,19 +426,29 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
   </div>
 </div>
 
-
-
-
-
-<div class="knobs">
-  <label class="knob"><span>Tempo <b id="vTempo">1.00×</b></span><input type="range" id="tempo" min="0.25" max="3" step="0.05" value="1"></label>
-  <label class="knob"><span>Transpose <b id="vTrans">0</b></span><input type="range" id="trans" min="-24" max="24" step="1" value="0"></label>
-  <label class="knob"><span>Volume <b id="vVol">60</b></span><input type="range" id="vol" min="0" max="100" step="1" value="60"></label>
-  <label class="knob"><span>Note gap <b id="vGap">8</b>%</span><input type="range" id="gap" min="0" max="40" step="1" value="8"></label>
-  <label class="knob"><span>Voice</span>
-    <select id="wave"><option value="square">Square (piezo)</option><option value="sawtooth">Saw</option><option value="triangle">Triangle</option><option value="sine">Sine</option></select></label>
-  <label class="knob"><span>BPM <b id="vBpm">63</b></span><input type="range" id="bpm" min="5" max="900" step="1" value="63"></label>
+<section id="exportSection">
+<h2>Export for firmware</h2>
+<p class="note">Turns the tune into arrays you can paste straight into a sketch. Durations are in milliseconds at the tune's own BPM, so the playback tempo slider doesn't affect them.</p>
+<div class="row">
+  <label class="mini">Format
+    <select id="expFmt">
+      <option value="notes">Arduino arrays — NOTE_ constants</option>
+      <option value="freq">Arduino arrays — frequencies in Hz</option>
+      <option value="struct">Arduino array of structs</option>
+      <option value="cstring">C string (RTTTL, for an RTTTL library)</option>
+      <option value="python">Python lists</option>
+    </select>
+  </label>
+  <label class="mini">Variable name <input type="text" id="expName" style="width:150px"></label>
+  <label class="mini"><input type="checkbox" id="expWrap" checked> group lines by phrase</label>
+  <button class="btn" id="expCopy">Copy</button>
 </div>
+<p class="status" id="expErr" style="display:none"></p>
+<textarea id="expOut" spellcheck="false" readonly style="min-height:220px;margin-top:10px"></textarea>
+</section>
+<hr class="hr">
+
+
 
 <hr class="hr">
 <h2>Import a MIDI file</h2>
@@ -839,6 +854,7 @@ function status(){
 function fullParse(){
   parsed=parse(el('src').value);
   el('bpm').value=clamp(parsed.b,5,900);el('vBpm').textContent=parsed.b;
+  if(el('bpmN'))el('bpmN').value=el('bpm').value;
   pen.oct=clamp(parsed.o,0,9);pen.dur=parsed.d;
   sel=Math.min(sel,parsed.tokens.length-1);
   rebuild();status();tape();renderList();syncExport();
@@ -1035,7 +1051,7 @@ function renderList(){
   var thead=document.createElement('thead'),hr=document.createElement('tr');
   hr.appendChild(mkTh('lbl',''));
   for(i=start;i<end;i++){
-    var h=document.createElement('th');h.className='num';h.dataset.c=i;h.title='Click to select just this column \u00b7 shift-click to extend \u00b7 right-click for more';
+    var h=document.createElement('th');h.className='num';h.dataset.c=i;h.title='Click to select \u00b7 shift-click to extend \u00b7 right-click to insert, copy or delete';
     h.appendChild(document.createTextNode(String(i+1)));
     hr.appendChild(h);
     if(overFrom>=0&&i>=overFrom)h.classList.add('over');
@@ -1182,6 +1198,15 @@ function rangeInfo(){
   el('pasteRange').disabled=!clip;
 }
 function clearRange(){rangeA=rangeB=-1;paintCols();rangeInfo();}
+function insertColumn(after){
+  var n=rangeA>=0?(rangeHi()-rangeLo()+1):1;
+  var at=rangeA>=0?(after?rangeHi()+1:rangeLo()):(sel>=0?(after?sel+1:sel):parsed.tokens.length);
+  snap();
+  for(var i=0;i<n;i++)parsed.tokens.splice(at,0,{p:true,dur:pen.dur,dotted:pen.dot});
+  sel=at;rangeA=at;rangeB=at+n-1;
+  edited();
+  toast(n+' empty column'+(n===1?'':'s')+' inserted');
+}
 function deleteSelection(){
   if(rangeA>=0){
     var n=rangeHi()-rangeLo()+1;
@@ -1290,6 +1315,9 @@ el('pgSel').addEventListener('click',function(){goToSel(false);});
     ['Copy','ctrl C',function(){return rangeA<0;},copyRange],
     ['Cut','ctrl X',function(){return rangeA<0;},cutRange],
     ['Paste over','ctrl V',function(){return !clip;},pasteRange],
+    ['sep'],
+    ['Insert column before','',function(){return false;},function(){insertColumn(false);}],
+    ['Insert column after','',function(){return false;},function(){insertColumn(true);}],
     ['sep'],
     ['Delete','del',function(){return rangeA<0&&sel<0;},deleteSelection],
     ['sep'],
@@ -1931,6 +1959,25 @@ el('midiLoad').addEventListener('click',function(){
   }
   sel.value='0';
 })();
+
+/* ---------- typed values beside each slider ---------- */
+function linkBox(rid,nid){
+  var r=el(rid),n=el(nid);
+  if(!r||!n)return;
+  function fromRange(){if(document.activeElement!==n)n.value=r.value;}
+  fromRange();
+  r.addEventListener('input',fromRange);
+  n.addEventListener('input',function(){
+    var v=parseFloat(n.value);
+    if(!isFinite(v))return;
+    r.value=clamp(v,parseFloat(r.min),parseFloat(r.max));
+    r.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  n.addEventListener('change',function(){n.value=r.value;});
+  n.addEventListener('keydown',function(e){if(e.key==='Enter'){n.blur();}});
+}
+[['tempo','tempoN'],['trans','transN'],['vol','volN'],['gap','gapN'],['bpm','bpmN'],['cellw','cellwN']]
+  .forEach(function(x){linkBox(x[0],x[1]);});
 
 /* ---------- boot ---------- */
 var EXAMPLES=[
