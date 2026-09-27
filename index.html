@@ -168,7 +168,10 @@ table.grid{user-select:none;-webkit-user-select:none;-ms-user-select:none;border
 .grid tfoot th.lbl{font-size:10.5px}
 .grid tfoot select:disabled{opacity:.3}
 .grid tfoot th.lbl{border-top:1px solid var(--grid)}
-.grid th.lbl.foot{font-size:10px;letter-spacing:.04em;text-transform:uppercase;opacity:.85}
+.grid th.lbl.foot{font-size:10px;letter-spacing:.04em;text-transform:uppercase;opacity:.85;padding:0 4px 0 6px}
+.grid select.bulk{width:100%;border:0;background:transparent;color:var(--key-txt);cursor:pointer;
+  font:inherit;font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 0}
+.grid select.bulk:hover{color:var(--accent)}
 .transport.ingrid{margin:9px 0 2px;gap:7px}
 #toolsFold .foldbody{padding:2px 0 4px}
 .gridbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 2px 2px;
@@ -336,6 +339,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
     <button class="btn" id="undo">Undo</button>
     <button class="btn" id="redo">Redo</button>
     <button class="btn" id="full">Full screen</button>
+    <button class="btn" id="jumpExport">Export ↓</button>
     <span class="hint">Click a cell in the grid to set a note · the <code>+</code> column adds one · drag the grid's bottom edge to make it taller</span>
   </div>
   <div class="fold" id="toolsFold">
@@ -352,7 +356,6 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
       <button class="btn sm" id="pasteRange" disabled>Paste</button>
       <span id="rangeInfo"></span>
       <label class="mini">Zoom <input type="range" id="cellw" min="18" max="90" step="1" value="36"></label>
-      <button class="btn sm" id="jumpExport">Export ↓</button>
       <span class="spacer"></span>
       <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over · right-click for a menu · <kbd>del</kbd> removes · <kbd>ctrl/⌘ Z</kbd> undo</span>
     </div>
@@ -972,6 +975,34 @@ function computeBounds(){
 function held(){return Date.now()-userHold<5000;}
 function touchHold(){userHold=Date.now();}
 function pageCount(){return Math.max(1,Math.ceil(parsed.tokens.length/PAGE));}
+function bulkSel(kind){
+  var sel=document.createElement('select');
+  sel.className='bulk';sel.dataset.bulk=kind;
+  sel.title=(kind==='d'?'Set the length of':'Set the octave of')+' every note, or just the selected ones';
+  var head=document.createElement('option');head.value='';head.textContent=kind==='d'?'duration':'octave';
+  sel.appendChild(head);
+  if(kind==='d')DURS.forEach(function(d){
+    [['',''],['.','.']].forEach(function(dot){
+      var o=document.createElement('option');o.value=d+dot[0];
+      o.textContent='all '+(d===1?'1':'1/'+d)+dot[1];sel.appendChild(o);
+    });
+  });
+  else for(var v=0;v<=9;v++){var o=document.createElement('option');o.value=String(v);o.textContent='all o='+v;sel.appendChild(o);}
+  return sel;
+}
+function applyBulk(kind,val){
+  var lo=rangeA>=0?rangeLo():0,hi=rangeA>=0?rangeHi():parsed.tokens.length-1;
+  if(!parsed.tokens.length)return toast('Nothing to change');
+  snap();
+  var n=0;
+  for(var i=lo;i<=hi;i++){
+    var k=parsed.tokens[i];if(!k)continue;
+    if(kind==='d'){k.dur=parseInt(val,10);k.dotted=val.indexOf('.')>=0;n++;}
+    else if(!k.p){k.oct=parseInt(val,10);n++;}
+  }
+  edited();
+  toast((kind==='d'?'Length':'Octave')+' set on '+n+' note'+(n===1?'':'s')+(rangeA>=0?' in the selection':''));
+}
 function mkTh(cls,txt){var t=document.createElement('th');t.className=cls;t.textContent=txt;return t;}
 function durOpts(sel,tok){
   DURS.forEach(function(d){
@@ -1048,7 +1079,8 @@ function renderList(){
   t.appendChild(tb);
 
   var tf=document.createElement('tfoot');
-  var dr=document.createElement('tr');dr.appendChild(mkTh('lbl foot','duration'));
+  var dr=document.createElement('tr'),dth=mkTh('lbl foot','');
+  dth.appendChild(bulkSel('d'));dr.appendChild(dth);
   for(i=start;i<end;i++){
     var dtd=document.createElement('td'),ds=document.createElement('select');
     ds.dataset.c=i;ds.dataset.k='d';durOpts(ds,parsed.tokens[i]);
@@ -1057,7 +1089,8 @@ function renderList(){
   for(i=0;i<nAdd;i++){var gd=document.createElement('td');gd.className='ghost';dr.appendChild(gd);}
   tf.appendChild(dr);
 
-  var orr=document.createElement('tr');orr.appendChild(mkTh('lbl foot','octave'));
+  var orr=document.createElement('tr'),oth=mkTh('lbl foot','');
+  oth.appendChild(bulkSel('o'));orr.appendChild(oth);
   for(i=start;i<end;i++){
     var otd=document.createElement('td'),os=document.createElement('select');
     os.dataset.c=i;os.dataset.k='o';
@@ -1233,6 +1266,10 @@ el('grid').addEventListener('click',function(e){
 });
 el('grid').addEventListener('change',function(e){
   var s2=e.target;
+  if(s2.tagName==='SELECT'&&s2.dataset.bulk){
+    if(s2.value!==''){applyBulk(s2.dataset.bulk,s2.value);}
+    s2.value='';return;
+  }
   if(s2.tagName!=='SELECT'||!s2.dataset.k)return;
   var i=parseInt(s2.dataset.c,10),v=s2.value;
   sel=i;
