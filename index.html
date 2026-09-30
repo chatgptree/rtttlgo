@@ -366,7 +366,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
       <span id="rangeInfo"></span>
       <label class="mini">Zoom <input type="range" id="cellw" min="18" max="90" step="1" value="36"><input type="number" class="numbox" id="cellwN" min="18" max="90" step="1"></label>
       <span class="spacer"></span>
-      <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over · right-click for a menu · <kbd>del</kbd> removes · <kbd>ctrl/⌘ Z</kbd> undo</span>
+      <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over (works between tabs) · right-click for a menu · <kbd>del</kbd> removes · <kbd>ctrl/⌘ Z</kbd> undo</span>
     </div>
     </div>
   </div>
@@ -1218,24 +1218,50 @@ function deleteSelection(){
     snap();parsed.tokens.splice(sel,1);sel=Math.min(sel,parsed.tokens.length-1);edited();
   } else toast('Select a column first');
 }
+function clipText(toks){
+  return serialize({name:'clip',d:parsed.d,o:parsed.o,b:parsed.b,tokens:toks});
+}
+function writeClip(toks){
+  clip=toks.map(cloneTok);
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(clipText(clip));
+  }catch(e){}
+}
+function tokensFromText(txt){
+  if(!txt)return null;
+  txt=String(txt).trim();
+  if(!txt||txt.length>200000||!/[a-hp]/i.test(txt))return null;
+  var pp=parse(txt);
+  return pp.tokens.length?pp.tokens:null;
+}
 function copyRange(){
   if(rangeA<0)return toast('Drag across the grid to select first');
-  clip=parsed.tokens.slice(rangeLo(),rangeHi()+1).map(cloneTok);
+  writeClip(parsed.tokens.slice(rangeLo(),rangeHi()+1));
   rangeInfo();toast(clip.length+' note'+(clip.length===1?'':'s')+' copied');
 }
-function pasteRange(){
-  if(!clip||!clip.length)return toast('Nothing copied yet');
+function pasteTokens(toks,where){
+  if(!toks||!toks.length)return toast('Nothing to paste');
   var at=rangeA>=0?rangeLo():(sel>=0?sel:parsed.tokens.length);
   if(at<0)at=parsed.tokens.length;
   snap();
   while(parsed.tokens.length<at)parsed.tokens.push({p:true,dur:pen.dur,dotted:pen.dot});
-  for(var i=0;i<clip.length;i++)parsed.tokens[at+i]=cloneTok(clip[i]);
-  rangeA=at;rangeB=at+clip.length-1;sel=at;
-  edited();goToSel(true);toast(clip.length+' note'+(clip.length===1?'':'s')+' pasted at #'+(at+1));
+  for(var i=0;i<toks.length;i++)parsed.tokens[at+i]=cloneTok(toks[i]);
+  rangeA=at;rangeB=at+toks.length-1;sel=at;
+  edited();goToSel(true);
+  toast(toks.length+' note'+(toks.length===1?'':'s')+' pasted at #'+(at+1)+(where?' ('+where+')':''));
+}
+function pasteRange(){
+  if(navigator.clipboard&&navigator.clipboard.readText){
+    navigator.clipboard.readText().then(function(txt){
+      var toks=tokensFromText(txt);
+      if(toks)pasteTokens(toks,'from clipboard');
+      else pasteTokens(clip);
+    },function(){pasteTokens(clip);});
+  } else pasteTokens(clip);
 }
 function cutRange(){
   if(rangeA<0)return;
-  clip=parsed.tokens.slice(rangeLo(),rangeHi()+1).map(cloneTok);
+  writeClip(parsed.tokens.slice(rangeLo(),rangeHi()+1));
   snap();
   parsed.tokens.splice(rangeLo(),clip.length);
   sel=Math.min(rangeLo(),parsed.tokens.length-1);
@@ -1367,7 +1393,6 @@ el('gridwrap').addEventListener('keydown',function(e){
     else if(k==='d'){el('dupBtn').click();e.preventDefault();}
     else if(k==='c'||k==='C'){copyRange();e.preventDefault();}
     else if(k==='x'||k==='X'){cutRange();e.preventDefault();}
-    else if(k==='v'||k==='V'){pasteRange();e.preventDefault();}
     else if(k==='a'||k==='A'){rangeA=0;rangeB=parsed.tokens.length-1;paintCols();rangeInfo();e.preventDefault();}
     return;
   }
@@ -2006,6 +2031,15 @@ try{var tv=localStorage.getItem('rtttl.target');if(tv)el('target').value=tv;}cat
 document.documentElement.style.setProperty('--cellw',el('cellw').value+'px');
 fullParse();libDraw();vDraw();sizeRuler();setTheme(th0==='gay'?'gay':'boring');
 window.addEventListener('resize',sizeRuler);
+document.addEventListener('paste',function(e){
+  var t=e.target,tag=t&&t.tagName;
+  if(tag==='TEXTAREA'||tag==='INPUT'||(t&&t.isContentEditable))return;
+  var dt=e.clipboardData||window.clipboardData;
+  if(!dt)return;
+  var toks=tokensFromText(dt.getData('text'));
+  if(toks){e.preventDefault();pasteTokens(toks,'from clipboard');}
+  else if(clip&&clip.length){e.preventDefault();pasteTokens(clip);}
+});
 document.addEventListener('keydown',function(e){
   var tag=e.target.tagName;
   if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')&&['TEXTAREA','INPUT'].indexOf(tag)<0){
