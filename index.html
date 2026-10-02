@@ -442,6 +442,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
   </label>
   <label class="mini">Variable name <input type="text" id="expName" style="width:150px"></label>
   <label class="mini"><input type="checkbox" id="expWiring" checked> show wiring checklist</label>
+  <span class="status" id="symWarn" style="display:none;margin:0"></span>
   <label class="mini"><input type="checkbox" id="expWrap" checked> group lines by phrase</label>
   <button class="btn" id="expCopy">Copy</button>
 </div>
@@ -875,7 +876,10 @@ function edited(){
   sel=clamp(keep,-1,parsed.tokens.length-1);
   rebuild();status();tape();renderList();syncExport();
 }
-function syncExport(){if(!expNameDirty)el('expName').value=slug(parsed.name);buildExport();}
+function syncExport(){
+  if(!expNameDirty)el('expName').value=symRemembered()||slug(parsed.name);
+  buildExport();
+}
 function fmt(s){s=Math.max(0,s);var m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+(x<10?'0':'')+x;}
 function toast(msg){var t=el('toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on');},1600);}
 function noteIndexAt(p){
@@ -1677,6 +1681,18 @@ el('verSave').addEventListener('click',function(){
 el('verLabel').addEventListener('keydown',function(e){if(e.key==='Enter')el('verSave').click();});
 
 /* ---------- firmware export ---------- */
+// One tune must always export under one symbol, or SoundEffects.h and
+// SoundManager.cpp end up disagreeing and the build breaks.
+function symKey(){return String(parsed.name||'tune').trim().toLowerCase();}
+function symRead(){try{return JSON.parse(localStorage.getItem('rtttl.symbols')||'{}');}catch(e){return {};}}
+function symWrite(m){try{localStorage.setItem('rtttl.symbols',JSON.stringify(m));}catch(e){}}
+function symRemembered(){var m=symRead();return m[symKey()]||'';}
+function symRemember(sym){
+  if(!sym)return;
+  var m=symRead();
+  if(m[symKey()]===sym)return;
+  m[symKey()]=sym;symWrite(m);
+}
 var CNAME=['C','CS','D','DS','E','F','FS','G','GS','A','AS','B'];
 var KNOWN_NOTES=(function(){
   var list=('REST C1 '+
@@ -1842,6 +1858,14 @@ function buildExport(){
   }
   el('expOut').value=out;
   el('wireOut').value=wiring;
+  var prev=symRemembered(),sw=el('symWarn');
+  if(prev&&prev!==nm){
+    sw.style.display='';sw.className='status bad';
+    sw.innerHTML='last exported as <b>'+prev+'</b> \u2014 pasting <b>'+nm+'</b> will not match your firmware '+
+      '<button class="btn sm" data-sym="'+prev+'" style="margin-left:6px">Use '+prev+'</button>';
+  } else {
+    sw.style.display='none';sw.innerHTML='';
+  }
   el('wireBox').style.display=wiring?'':'none';
   var eb=el('expErr'),warn=[];
   if(miss.length){
@@ -1882,13 +1906,24 @@ el('jumpExport').addEventListener('click',function(){
   el('exportSection').scrollIntoView({behavior:'smooth',block:'start'});
   flash('exportSection');
 });
+el('symWarn').addEventListener('click',function(e){
+  var b=e.target.closest('button');
+  if(!b||!b.dataset.sym)return;
+  el('expName').value=b.dataset.sym;expNameDirty=true;buildExport();
+  toast('Using '+b.dataset.sym);
+});
+// the symbol is pinned the moment the code actually leaves the page
+function pinSymbol(){symRemember(slug(el('expName').value||parsed.name));}
 el('wireCopy').addEventListener('click',function(){
   var v=el('wireOut').value;
-  if(v&&navigator.clipboard)navigator.clipboard.writeText(v).then(function(){toast('Wiring checklist copied');});
+  if(!v)return;
+  pinSymbol();
+  if(navigator.clipboard)navigator.clipboard.writeText(v).then(function(){toast('Wiring checklist copied');});
 });
 el('expCopy').addEventListener('click',function(){
   var v=el('expOut').value;
   if(!v)return toast('Nothing to export');
+  pinSymbol();
   if(navigator.clipboard)navigator.clipboard.writeText(v).then(function(){toast('Copied '+v.length+' characters');});
 });
 
