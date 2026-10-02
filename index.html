@@ -441,6 +441,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
     </select>
   </label>
   <label class="mini">Variable name <input type="text" id="expName" style="width:150px"></label>
+  <label class="mini"><input type="checkbox" id="expWiring" checked> wiring snippet</label>
   <label class="mini"><input type="checkbox" id="expWrap" checked> group lines by phrase</label>
   <button class="btn" id="expCopy">Copy</button>
 </div>
@@ -1670,11 +1671,24 @@ el('verLabel').addEventListener('keydown',function(e){if(e.key==='Enter')el('ver
 
 /* ---------- firmware export ---------- */
 var CNAME=['C','CS','D','DS','E','F','FS','G','GS','A','AS','B'];
+var KNOWN_NOTES=(function(){
+  var list=('REST C1 '+
+    'C2 D2 F2 G2 GS2 A2 AS2 B2 '+
+    'C3 CS3 D3 E3 F3 FS3 G3 GS3 A3 AS3 B3 '+
+    'C4 CS4 D4 DS4 E4 F4 FS4 G4 GS4 A4 AS4 B4 '+
+    'C5 CS5 D5 DS5 E5 F5 FS5 G5 GS5 A5 AS5 B5 '+
+    'C6 CS6 D6 DS6 E6 F6 FS6 G6 GS6 A6 AS6 B6 '+
+    'C7 CS7 D7 DS7 E7').split(' ');
+  var o={};list.forEach(function(n){o['NOTE_'+n]=1;});return o;
+})();
 function slug(x){
-  var parts=String(x||'tune').split(/[^A-Za-z0-9]+/).filter(Boolean);
-  if(!parts.length)parts=['tune'];
-  var out=parts[0].charAt(0).toLowerCase()+parts[0].slice(1);
-  for(var i=1;i<parts.length;i++)out+=parts[i].charAt(0).toUpperCase()+parts[i].slice(1);
+  var words=String(x||'tune')
+    .replace(/([a-z0-9])([A-Z])/g,'$1 $2')
+    .split(/[^A-Za-z0-9]+/).filter(Boolean)
+    .map(function(w){return w.toLowerCase();});
+  if(!words.length)words=['tune'];
+  var out=words[0];
+  for(var i=1;i<words.length;i++)out+=words[i].charAt(0).toUpperCase()+words[i].slice(1);
   if(/^[0-9]/.test(out))out='t'+out;
   return out;
 }
@@ -1754,6 +1768,12 @@ function buildExport(){
   var head='// '+(parsed.name||'tune')+' \u2014 '+rows.length+' notes, '+total+' ms @ '+parsed.b+' BPM\n'+
            wrapSource(serialize(parsed))+'\n';
   var groups=lineGroups(rows,el('expWrap').checked),out;
+  var missSeen={},miss=[];
+  rows.forEach(function(r){
+    if(r.rest||KNOWN_NOTES[r.name]||missSeen[r.name])return;
+    missSeen[r.name]=1;miss.push({name:r.name,hz:r.hz});
+  });
+  miss.sort(function(a,b){return a.hz-b.hz;});
 
   function block(map){
     return groups.map(function(g){
@@ -1761,7 +1781,17 @@ function buildExport(){
     }).join('\n').replace(/,$/,'');
   }
   if(fmt==='annot'){
+    var pre='';
+    if(miss.length){
+      var w=Math.max.apply(null,miss.map(function(m){return m.name.length;}));
+      pre='// Add to Melodies.h first \u2014 these are not defined there yet:\n'+
+        miss.map(function(m){
+          var pad=m.name+Array(w-m.name.length+2).join(' ');
+          return '// #define '+pad+' '+m.hz;
+        }).join('\n')+'\n';
+    }
     var band='// ========== '+bannerName(nm)+' ========== '+stamp();
+    var symline='// symbol: '+nm+'  (arrays: '+nm+'Notes / '+nm+'Durations / '+nm+'Length)';
     var legend='// '+rows.length+' notes, '+total+'ms. '+durLegend()+'.';
     var blocks='// Blocks: '+blockRanges(rows)+'.';
     var arr=function(map){
@@ -1770,14 +1800,25 @@ function buildExport(){
         return gi===groups.length-1?line:line+',';
       }).join('\n');
     };
-    out=band+'\n// '+serialize(parsed)+'\n'+legend+'\n'+blocks+'\n'+
+    out=pre+band+'\n'+symline+'\n// '+serialize(parsed)+'\n'+legend+'\n'+blocks+'\n'+
       'const int '+nm+'Notes[] = {\n'+arr(function(i){return rows[i].name;})+'};\n\n'+
       'const int '+nm+'Durations[] = {\n'+arr(function(i){return String(rows[i].ms);})+'};\n\n'+
       'const int '+nm+'Length = '+rows.length+';\n';
+    if(el('expWiring').checked){
+      var label=nm.toUpperCase().slice(0,10);
+      var wrap='play'+nm.charAt(0).toUpperCase()+nm.slice(1);
+      out+='\n// \u2500\u2500 Wiring \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n'+
+        '// SoundEffects.h \u2192 add to SOUND_EFFECTS_TABLE, then bump SOUND_EFFECTS_COUNT by 1:\n'+
+        '//     {"'+label+'", '+nm+'Notes, '+nm+'Durations, '+nm+'Length},\n'+
+        '// SoundManager.h:\n'+
+        '//     void '+wrap+'();\n'+
+        '// SoundManager.cpp:\n'+
+        '//     void SoundManager::'+wrap+'() { playMelody('+nm+'Notes, '+nm+'Durations, '+nm+'Length); }\n';
+    }
   } else if(fmt==='notes'||fmt==='freq'){
     var val=fmt==='notes'?function(i){return rows[i].name;}:function(i){return String(rows[i].hz);};
     out=head+
-      (fmt==='notes'?'// NOTE_* come from pitches.h; NOTE_REST should be 0.\n':'// Frequencies in Hz; 0 means a rest.\n')+
+      (fmt==='notes'?'// NOTE_* come from Melodies.h; NOTE_REST is 0.\n':'// Frequencies in Hz; 0 means a rest.\n')+
       'const int '+nm+'Notes[] = {\n'+block(val)+'\n};\n'+
       'const int '+nm+'Durations[] = {\n'+block(function(i){return String(rows[i].ms);})+'\n};\n'+
       'const int '+nm+'Length = '+rows.length+';\n';
@@ -1794,16 +1835,22 @@ function buildExport(){
       nm+'_durations = [\n'+groups.map(function(g){return '    '+g.map(function(i){return String(rows[i].ms);}).join(', ')+',';}).join('\n').replace(/,$/,'')+'\n]\n';
   }
   el('expOut').value=out;
-  var eb=el('expErr');
+  var eb=el('expErr'),warn=[];
+  if(miss.length){
+    warn.push(miss.length+" note"+(miss.length>1?'s':'')+(miss.length>1?" aren't":" isn't")+" defined in Melodies.h \u2014 add the defines "+
+      (fmt==='annot'?'at the top of this export':'shown in the annotated format')+" first: "+
+      miss.map(function(m){return m.name;}).join(', '));
+  }
   if(parsed.errors.length){
-    eb.style.display='';
-    eb.textContent='Heads up \u2014 '+parsed.errors.length+' token'+(parsed.errors.length>1?'s':'')+
+    warn.push(parsed.errors.length+' token'+(parsed.errors.length>1?'s':'')+
       " in the source couldn't be read and are missing from this export: "+
-      parsed.errors.slice(0,8).map(function(e){return '#'+(e.i+1)+' "'+e.tok+'"';}).join('  ')+
-      (parsed.errors.length>8?'  \u2026':'');
-  } else eb.style.display='none';
+      parsed.errors.slice(0,8).map(function(e){return '#'+(e.i+1)+' "'+e.tok+'"';})      .join('  ')+
+      (parsed.errors.length>8?'  \u2026':''));
+  }
+  if(warn.length){eb.style.display='';eb.textContent=warn.join('   \u00b7   ');}
+  else eb.style.display='none';
 }
-['expFmt','expWrap'].forEach(function(id){el(id).addEventListener('change',buildExport);});
+['expFmt','expWrap','expWiring'].forEach(function(id){el(id).addEventListener('change',buildExport);});
 var expNameDirty=false;
 el('expName').addEventListener('input',function(){expNameDirty=el('expName').value.trim()!=='';buildExport();});
 function flash(id){var e=el(id);if(!e)return;e.classList.remove('flash');void e.offsetWidth;e.classList.add('flash');}
