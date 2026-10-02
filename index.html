@@ -432,6 +432,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
 <div class="row">
   <label class="mini">Format
     <select id="expFmt">
+      <option value="annot">Arduino arrays — annotated (banner, legend, blocks)</option>
       <option value="notes">Arduino arrays — NOTE_ constants</option>
       <option value="freq">Arduino arrays — frequencies in Hz</option>
       <option value="struct">Arduino array of structs</option>
@@ -1670,10 +1671,41 @@ el('verLabel').addEventListener('keydown',function(e){if(e.key==='Enter')el('ver
 /* ---------- firmware export ---------- */
 var CNAME=['C','CS','D','DS','E','F','FS','G','GS','A','AS','B'];
 function slug(x){
-  x=(x||'tune').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
-  if(!x)x='tune';
-  if(/^[0-9]/.test(x))x='t'+x;
-  return x.charAt(0).toLowerCase()+x.slice(1);
+  var parts=String(x||'tune').split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if(!parts.length)parts=['tune'];
+  var out=parts[0].charAt(0).toLowerCase()+parts[0].slice(1);
+  for(var i=1;i<parts.length;i++)out+=parts[i].charAt(0).toUpperCase()+parts[i].slice(1);
+  if(/^[0-9]/.test(out))out='t'+out;
+  return out;
+}
+function bannerName(nm){
+  return nm.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/[_-]+/g,' ').toUpperCase();
+}
+function stamp(){
+  var d=new Date(),z=function(n){return (n<10?'0':'')+n;};
+  return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes())+':'+z(d.getSeconds());
+}
+var DURNAME={1:'whole',2:'half',4:'quarter',8:'eighth',16:'16th',32:'32nd'};
+function durLegend(){
+  var seen={},out=[];
+  parsed.tokens.forEach(function(k){
+    var ms=Math.round((60000/parsed.b)*4/k.dur*(k.dotted?1.5:1));
+    var nm=(k.dotted?'dotted ':'')+(DURNAME[k.dur]||('1/'+k.dur));
+    if(!seen[nm]){seen[nm]=ms;out.push({nm:nm,ms:ms});}
+  });
+  out.sort(function(a,b){return b.ms-a.ms;});
+  return out.map(function(x){return x.nm+'='+x.ms;}).join(', ');
+}
+function blockRanges(rows){
+  var out=[],cur=null,t=0;
+  rows.forEach(function(r){
+    var kind=r.rest?'rest':'notes';
+    if(!cur||cur.kind!==kind){if(cur)out.push(cur);cur={kind:kind,a:t,b:t+r.ms};}
+    else cur.b+=r.ms;
+    t+=r.ms;
+  });
+  if(cur)out.push(cur);
+  return out.map(function(x){return x.kind+' '+x.a+'-'+x.b;}).join(', ');
 }
 function exportRows(){
   var whole=(60000/parsed.b)*4,rows=[],t=0;
@@ -1728,7 +1760,21 @@ function buildExport(){
       return '    '+g.map(map).join(', ')+',';
     }).join('\n').replace(/,$/,'');
   }
-  if(fmt==='notes'||fmt==='freq'){
+  if(fmt==='annot'){
+    var band='// ========== '+bannerName(nm)+' ========== '+stamp();
+    var legend='// '+rows.length+' notes, '+total+'ms. '+durLegend()+'.';
+    var blocks='// Blocks: '+blockRanges(rows)+'.';
+    var arr=function(map){
+      return groups.map(function(g,gi){
+        var line='    '+g.map(map).join(', ');
+        return gi===groups.length-1?line:line+',';
+      }).join('\n');
+    };
+    out=band+'\n// '+serialize(parsed)+'\n'+legend+'\n'+blocks+'\n'+
+      'const int '+nm+'Notes[] = {\n'+arr(function(i){return rows[i].name;})+'};\n\n'+
+      'const int '+nm+'Durations[] = {\n'+arr(function(i){return String(rows[i].ms);})+'};\n\n'+
+      'const int '+nm+'Length = '+rows.length+';\n';
+  } else if(fmt==='notes'||fmt==='freq'){
     var val=fmt==='notes'?function(i){return rows[i].name;}:function(i){return String(rows[i].hz);};
     out=head+
       (fmt==='notes'?'// NOTE_* come from pitches.h; NOTE_REST should be 0.\n':'// Frequencies in Hz; 0 means a rest.\n')+
