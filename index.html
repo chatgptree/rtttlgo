@@ -149,6 +149,9 @@ table.grid{user-select:none;-webkit-user-select:none;-ms-user-select:none;border
 :root[data-theme="gay"] .grid tbody tr[data-p="10"] td.on{background:hsl(300,92%,57%)}
 :root[data-theme="gay"] .grid tbody tr[data-p="11"] td.on{background:hsl(330,92%,57%)}
 
+.grid td.pad,.grid th.pad{padding:0;border:0;background:transparent;cursor:default;box-shadow:none}
+.grid tbody td.pad:hover{box-shadow:none}
+.grid thead th.num .n{display:block;width:var(--cellw,36px);overflow:hidden;white-space:nowrap}
 .grid tbody tr.restrow td.on{background:var(--key-txt)}
 .grid tbody tr.restrow th.lbl{font-style:italic}
 .grid tbody td.newcell{border-right:1px dashed var(--key-txt)}
@@ -243,6 +246,13 @@ table.grid{user-select:none;-webkit-user-select:none;-ms-user-select:none;border
 .srctitle::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
 .srcmeta{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:var(--text-soft)}
 .srcnote{font-size:12px;color:var(--text-soft)}
+.srcpanel{position:relative}
+.srcx{position:absolute;top:7px;right:8px;width:26px;height:26px;display:grid;place-items:center;
+  background:none;border:1px solid transparent;border-radius:50%;cursor:pointer;color:var(--text-soft);
+  font-size:15px;line-height:1;padding:0}
+.srcx:hover{color:var(--bad);border-color:var(--line);background:var(--bg)}
+.srcx:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.srchead{padding-right:30px}
 #src{min-height:112px;font-size:14px;background:var(--bg);
   border:1px solid var(--accent);border-left-width:4px}
 #src:focus{outline:none;box-shadow:0 0 0 3px rgba(90,150,135,.2)}
@@ -301,6 +311,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
 
 <div class="lcd" id="stage">
   <section class="srcpanel">
+    <button class="srcx" id="srcX" title="Clear the box so you can paste a new tune (your current one is kept in Versions)" aria-label="Clear the source box">&#x2715;</button>
     <div class="srchead">
       <span class="srctitle">RTTTL source</span>
       <span class="srcmeta" id="srcMeta"></span>
@@ -355,9 +366,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
     <button class="foldhead" id="toolsHead" aria-expanded="false">Grid tools <span class="foldmeta" id="toolsMeta"></span></button>
     <div class="foldbody" id="toolsBody" hidden>
     <div class="gridbar" id="listCtl">
-      <button class="btn sm" id="pgPrev">◀</button>
       <span id="pgInfo"></span>
-      <button class="btn sm" id="pgNext">▶</button>
       <button class="btn sm" id="pgSel">Go to selected</button>
       <label class="mini"><input type="checkbox" id="pgFollow" checked> follow playback</label>
       <button class="btn sm" id="copyRange" disabled>Copy</button>
@@ -366,7 +375,7 @@ kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;border:
       <span id="rangeInfo"></span>
       <label class="mini">Zoom <input type="range" id="cellw" min="18" max="90" step="1" value="36"><input type="number" class="numbox" id="cellwN" min="18" max="90" step="1"></label>
       <span class="spacer"></span>
-      <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over (works between tabs) · right-click for a menu · <kbd>del</kbd> removes · <kbd>ctrl/⌘ Z</kbd> undo</span>
+      <span class="gridhint">click a pitch to set it, again to silence it · drag across columns to select · click a column number to select just that one · <kbd>ctrl/⌘ C</kbd> <kbd>X</kbd> <kbd>V</kbd> copy, cut, paste over (works between tabs) · right-click for a menu · <kbd>del</kbd> ripple-deletes · <kbd>shift del</kbd> deletes and leaves a gap · <kbd>ctrl/⌘ Z</kbd> undo</span>
     </div>
     </div>
   </div>
@@ -655,36 +664,44 @@ function metrics(){
 }
 function colX(i){return labelW+(i-pageStart)*cellW;}
 function colDur(i){var k=parsed.tokens[i];return k?realSecOf(k):ghostSec;}
+// The grid spans the whole song but only builds the columns near the view
+// (pageStart..pageEnd). The ruler canvas covers just those built columns and
+// is shifted right by pageStart columns, so colX() is canvas-relative.
+function colIndexAt(tr){
+  var n=colStart.length,lo=0,hi=n-1;
+  while(lo<hi){var m=(lo+hi+1)>>1;if(colStart[m]<=tr)lo=m;else hi=m-1;}
+  return lo;
+}
 function xOfReal(tr){
-  if(!parsed.tokens.length)return labelW;
-  for(var i=pageStart;i<pageEnd;i++){
-    if(colStart[i]==null)return colX(i);
-    var d=colDur(i);
-    if(tr<colStart[i]+d||i===pageEnd-1)return colX(i)+Math.max(0,Math.min(1,(tr-colStart[i])/d))*cellW;
-  }
-  return colX(pageEnd);
+  var n=colStart.length;
+  if(!n)return labelW;
+  if(tr>=totalReal)return colX(n);
+  var i=colIndexAt(tr);
+  return colX(i)+clamp((tr-colStart[i])/colDur(i),0,1)*cellW;
 }
 function realOfX(x){
   var i=Math.floor((x-labelW)/cellW)+pageStart;
-  if(i<pageStart)return 0;
-  if(i>=pageEnd||colStart[i]==null)return totalReal;
+  if(i<0)return 0;
+  if(i>=colStart.length)return totalReal;
   var f=((x-labelW)/cellW)-(i-pageStart);
   return colStart[i]+clamp(f,0,1)*colDur(i);
 }
 // scrubbing lands on a column edge — playback resumes at a note boundary regardless
 function realOfXSnapped(x){
-  if(x<labelW)return 0;
   var i=Math.floor((x-labelW)/cellW)+pageStart;
-  if(i>=pageEnd)return totalReal;
-  var v=colStart[clamp(i,pageStart,Math.max(pageStart,pageEnd-1))];
-  return v==null?totalReal:v;
+  if(i<0)return 0;
+  if(i>=colStart.length)return totalReal;
+  return colStart[i];
 }
+function rulerOffset(){return pageStart*cellW;}
 function sizeRuler(){
   var c=el('ruler');if(!c)return;
   rctx=c.getContext('2d');
-  rdpr=Math.min(2,window.devicePixelRatio||1);
   metrics();
-  rW=Math.max(200,el('grid').offsetWidth||el('gridwrap').clientWidth);
+  rW=Math.max(1,labelW+(pageEnd-pageStart+nGhost)*cellW);
+  // browsers refuse canvases wider than ~32k device pixels, so trade sharpness for width when needed
+  rdpr=Math.min(2,window.devicePixelRatio||1,30000/rW);
+  c.style.marginLeft=rulerOffset()+'px';
   c.style.width=rW+'px';c.style.height=rH+'px';
   c.width=Math.round(rW*rdpr);c.height=Math.round(rH*rdpr);
   drawRuler();
@@ -698,14 +715,15 @@ function drawRuler(){
   // played-so-far bar
   var pReal=position()*playScale();
   g.fillStyle=css('--note');g.globalAlpha=.4;
-  g.fillRect(labelW,rH-9,Math.max(0,xOfReal(pReal)-labelW),9);
+  var barFrom=pageStart>0?0:labelW;
+  g.fillRect(barFrom,rH-9,Math.max(0,xOfReal(pReal)-barFrom),9);
   g.globalAlpha=1;
   // second marks along the columns
   g.font='9px "JetBrains Mono", ui-monospace, monospace';g.textBaseline='alphabetic';
   var every=Math.max(1,Math.ceil(42/cellW)),shown=0;
   for(var i=pageStart;i<pageEnd;i++){
     if(colStart[i]==null)break;
-    var x=Math.round(colX(i))+0.5,major=((i-pageStart)%every===0);
+    var x=Math.round(colX(i))+0.5,major=(i%every===0);
     g.fillStyle=css('--grid');g.fillRect(x,rH-9,1,major?9:4);
     if(major&&x<rW-24){
       g.fillStyle=css('--key-txt');
@@ -729,7 +747,7 @@ function drawRuler(){
   var pl=el('playline'),tb=el('grid');
   if(pl&&tb){
     pl.style.display='block';
-    pl.style.left=(ph-1)+'px';
+    pl.style.left=(rulerOffset()+ph-1)+'px';
     pl.style.top=rH+'px';
     pl.style.height=tb.offsetHeight+'px';
   }
@@ -771,7 +789,7 @@ el('cellw').addEventListener('input',function(){
   var box=el('gridwrap'),old=cellW||36,idx=box.scrollLeft/old;
   var v=parseInt(el('cellw').value,10);
   document.documentElement.style.setProperty('--cellw',v+'px');
-  metrics();box.scrollLeft=idx*v;sizeRuler();touchHold();
+  touchHold();renderList(idx*v);
 });
 
 /* ---------- view helpers ---------- */
@@ -981,7 +999,7 @@ el('undo').addEventListener('click',doUndo);
 el('redo').addEventListener('click',doRedo);
 
 /* ---------- note grid ---------- */
-var PAGE=400,page=0,gridCols={},nowCol=-1,userHold=0;
+var gridCols={},nowCol=-1,userHold=0;
 var colStart=[],totalReal=0,overFrom=-1,ghosts=1,ghostSec=0;
 var rangeA=-1,rangeB=-1,clip=null;
 function inRange(i){return rangeA>=0&&i>=Math.min(rangeA,rangeB)&&i<=Math.max(rangeA,rangeB);}
@@ -1003,7 +1021,35 @@ function computeBounds(){
 }
 function held(){return Date.now()-userHold<5000;}
 function touchHold(){userHold=Date.now();}
-function pageCount(){return Math.max(1,Math.ceil(parsed.tokens.length/PAGE));}
+// which columns to build for a given scroll position: what's visible plus
+// about a screen and a half either side, so normal scrolling never sees a gap
+function windowFor(scrollLeft){
+  var n=parsed.tokens.length,vw=el('gridwrap').clientWidth||800;
+  var first=Math.floor(Math.max(0,scrollLeft)/cellW);
+  var vis=Math.ceil(vw/cellW)+1,buf=Math.max(24,Math.ceil(vw*1.5/cellW));
+  var s=clamp(first-buf,0,n),e=clamp(first+vis+buf,0,n);
+  return [s,e];
+}
+var winQueued=false;
+function checkWindow(){
+  var box=el('gridwrap'),n=parsed.tokens.length;
+  var v0=Math.floor(box.scrollLeft/cellW),v1=Math.ceil((box.scrollLeft+box.clientWidth)/cellW);
+  var margin=Math.ceil(box.clientWidth*0.5/cellW);
+  if((pageStart>0&&v0<pageStart+margin)||(pageEnd<n&&v1>pageEnd-margin))renderList();
+}
+function scrollToCol(i,quiet){
+  var box=el('gridwrap'),x=labelW+i*cellW;
+  if(x-labelW<box.scrollLeft||x+cellW>box.scrollLeft+box.clientWidth-8){
+    if(quiet&&held())return;
+    box.scrollLeft=Math.max(0,x-box.clientWidth*0.35);
+    checkWindow();
+  }
+}
+function padCell(tag,w){
+  var c=document.createElement(tag);c.className='pad';
+  c.style.width=c.style.minWidth=c.style.maxWidth=w+'px';
+  return c;
+}
 function bulkSel(kind){
   var sel=document.createElement('select');
   sel.className='bulk';sel.dataset.bulk=kind;
@@ -1043,33 +1089,41 @@ function durOpts(sel,tok){
   });
   sel.value=tok.dur+(tok.dotted?'.':'');
 }
-function renderList(){
-  page=clamp(page,0,pageCount()-1);
+function renderList(wantScroll){
   computeBounds();
-  var n=parsed.tokens.length,start=page*PAGE,end=Math.min(n,start+PAGE),addCol=(end===n);
+  metrics();
+  var box=el('gridwrap'),keepScroll=(wantScroll!=null)?wantScroll:box.scrollLeft;
+  var n=parsed.tokens.length,win=windowFor(keepScroll),start=win[0],end=win[1],addCol=(end===n);
   var nAdd=addCol?ghosts:0;
   pageStart=start;pageEnd=end;nGhost=nAdd;
-  var many=pageCount()>1;
-  ['pgPrev','pgNext','pgSel'].forEach(function(id){el(id).style.display=many?'':'none';});
-  el('pgInfo').textContent=n?(many?('notes '+(start+1)+'\u2013'+end+' of '+n+'   \u00b7   page '+(page+1)+'/'+pageCount()):n+' notes'):'no notes yet';
-  var t=el('grid'),i,r,keepScroll=el('gridwrap').scrollLeft;
+  var padL=start*cellW,padR=(n-end)*cellW;
+  el('pgInfo').textContent=n?n+' notes':'no notes yet';
+  var t=el('grid'),i,r;
   t.innerHTML='';gridCols={};
+  // spacer cells stand in for the columns that aren't built, so the scrollbar spans the whole song
+  function padL_(row,tag){if(padL)row.appendChild(padCell(tag,padL));}
+  function padR_(row,tag){if(padR)row.appendChild(padCell(tag,padR));}
 
   var cg=document.createElement('colgroup');
   cg.appendChild(document.createElement('col'));
+  if(padL)cg.appendChild(document.createElement('col'));
   for(i=start;i<end;i++){var c=document.createElement('col');cg.appendChild(c);gridCols[i]=c;}
+  if(padR)cg.appendChild(document.createElement('col'));
   for(i=0;i<nAdd;i++)cg.appendChild(document.createElement('col'));
   t.appendChild(cg);
 
   var thead=document.createElement('thead'),hr=document.createElement('tr');
   hr.appendChild(mkTh('lbl',''));
+  padL_(hr,'th');
   for(i=start;i<end;i++){
     var h=document.createElement('th');h.className='num';h.dataset.c=i;h.title='Click to select \u00b7 shift-click to extend \u00b7 right-click to insert, copy or delete';
-    h.appendChild(document.createTextNode(String(i+1)));
+    var hn=document.createElement('span');hn.className='n';hn.textContent=String(i+1);
+    h.appendChild(hn);
     hr.appendChild(h);
     if(overFrom>=0&&i>=overFrom)h.classList.add('over');
     if(overFrom>=0&&i===overFrom)h.classList.add('overstart');
   }
+  padR_(hr,'th');
   for(i=0;i<nAdd;i++){var gh=mkTh('num ghost',i===0?'+':'');hr.appendChild(gh);}
   thead.appendChild(hr);t.appendChild(thead);
 
@@ -1077,6 +1131,7 @@ function renderList(){
   for(r=11;r>=0;r--){
     var row=document.createElement('tr'),nm=PITCH[r];row.dataset.p=r;
     row.appendChild(mkTh('lbl'+(nm.length>1?' blk':''),nm.toUpperCase()));
+    padL_(row,'td');
     for(i=start;i<end;i++){
       var td=document.createElement('td');td.dataset.c=i;td.dataset.p=r;
       var tok=parsed.tokens[i];
@@ -1085,6 +1140,7 @@ function renderList(){
       if(overFrom>=0&&i===overFrom)td.classList.add('overstart');
       row.appendChild(td);
     }
+    padR_(row,'td');
     for(var q=0;q<nAdd;q++){
       var tn=document.createElement('td');tn.className='newcell ghost';
       tn.dataset.c='new';tn.dataset.p=r;tn.dataset.g=q;row.appendChild(tn);
@@ -1093,6 +1149,7 @@ function renderList(){
   }
   var rr=document.createElement('tr');rr.className='restrow';
   rr.appendChild(mkTh('lbl','rest'));
+  padL_(rr,'td');
   for(i=start;i<end;i++){
     var rtd=document.createElement('td');rtd.dataset.c=i;rtd.dataset.p='rest';
     if(parsed.tokens[i].p)rtd.className='on';
@@ -1100,6 +1157,7 @@ function renderList(){
     if(overFrom>=0&&i===overFrom)rtd.classList.add('overstart');
     rr.appendChild(rtd);
   }
+  padR_(rr,'td');
   for(var q2=0;q2<nAdd;q2++){
     var rn=document.createElement('td');rn.className='newcell ghost';
     rn.dataset.c='new';rn.dataset.p='rest';rn.dataset.g=q2;rr.appendChild(rn);
@@ -1110,16 +1168,19 @@ function renderList(){
   var tf=document.createElement('tfoot');
   var dr=document.createElement('tr'),dth=mkTh('lbl foot','');
   dth.appendChild(bulkSel('d'));dr.appendChild(dth);
+  padL_(dr,'td');
   for(i=start;i<end;i++){
     var dtd=document.createElement('td'),ds=document.createElement('select');
     ds.dataset.c=i;ds.dataset.k='d';durOpts(ds,parsed.tokens[i]);
     dtd.appendChild(ds);dr.appendChild(dtd);
   }
+  padR_(dr,'td');
   for(i=0;i<nAdd;i++){var gd=document.createElement('td');gd.className='ghost';dr.appendChild(gd);}
   tf.appendChild(dr);
 
   var orr=document.createElement('tr'),oth=mkTh('lbl foot','');
   oth.appendChild(bulkSel('o'));orr.appendChild(oth);
+  padL_(orr,'td');
   for(i=start;i<end;i++){
     var otd=document.createElement('td'),os=document.createElement('select');
     os.dataset.c=i;os.dataset.k='o';
@@ -1129,10 +1190,11 @@ function renderList(){
     os.disabled=!!tk.p;
     otd.appendChild(os);orr.appendChild(otd);
   }
+  padR_(orr,'td');
   for(i=0;i<nAdd;i++){var go=document.createElement('td');go.className='ghost';orr.appendChild(go);}
   tf.appendChild(orr);
   t.appendChild(tf);
-  el('gridwrap').scrollLeft=keepScroll;
+  box.scrollLeft=keepScroll;
   paintCols();
   sizeRuler();
   if(rangeA>=parsed.tokens.length||rangeB>=parsed.tokens.length){rangeA=rangeB=-1;}
@@ -1153,27 +1215,17 @@ function markListNow(i){
   nowCol=i;
   paintCols();
   if(!el('pgFollow').checked||i<0||held())return;
-  var want=Math.floor(i/PAGE);
-  if(want!==page){page=want;renderList();paintCols();return;}
-  var box=el('gridwrap'),cell=el('grid').querySelector('td[data-c="'+i+'"]');
-  if(!cell)return;
-  var x=cell.offsetLeft,w=cell.offsetWidth;
-  if(x<box.scrollLeft||x+w>box.scrollLeft+box.clientWidth-8)
-    box.scrollLeft=Math.max(0,x-box.clientWidth*0.35);
+  scrollToCol(i,false);
 }
 function goToSel(quiet){
   if(sel<0){if(!quiet)toast('Nothing selected');return;}
-  var want=Math.floor(sel/PAGE);
-  if(want!==page){page=want;renderList();}
-  var box=el('gridwrap'),cell=el('grid').querySelector('td[data-c="'+sel+'"]');
-  if(cell){
-    var x=cell.offsetLeft,w=cell.offsetWidth;
-    var off = x<box.scrollLeft || x+w>box.scrollLeft+box.clientWidth-8;
-    if(off&&!(quiet&&held()))box.scrollLeft=Math.max(0,x-box.clientWidth*0.35);
-  }
+  scrollToCol(sel,quiet);
   paintCols();
 }
-el('gridwrap').addEventListener('scroll',touchHold);
+el('gridwrap').addEventListener('scroll',function(){
+  if(winQueued)return;winQueued=true;
+  requestAnimationFrame(function(){winQueued=false;checkWindow();});
+});
 var mq=null,mqMoved=false,suppressClick=false;
 function colOf(e){
   var t=e.target.closest?e.target.closest('td,th'):null;
@@ -1187,7 +1239,10 @@ el('gridwrap').addEventListener('pointerdown',function(e){
   var i=colOf(e);
   if(i<0)return;
   mq=i;mqMoved=false;
-  if(e.pointerType==='mouse')e.preventDefault();
+  if(e.pointerType==='mouse'){
+    e.preventDefault(); // stops text-selection while dragging, but also stops focus, so give it back
+    el('gridwrap').focus({preventScroll:true});
+  }
   if(e.shiftKey&&rangeA>=0){rangeB=i;mqMoved=true;paintCols();rangeInfo();}
 });
 el('gridwrap').addEventListener('pointermove',function(e){
@@ -1220,16 +1275,30 @@ function insertColumn(after){
   edited();
   toast(n+' empty column'+(n===1?'':'s')+' inserted');
 }
+// ripple delete: remove the columns and close the hole, so everything after slides left
 function deleteSelection(){
   if(rangeA>=0){
     var n=rangeHi()-rangeLo()+1;
     snap();parsed.tokens.splice(rangeLo(),n);
     sel=Math.min(rangeLo(),parsed.tokens.length-1);
     clearRange();edited();
-    toast(n+' column'+(n===1?'':'s')+' deleted');
+    toast(n+' column'+(n===1?'':'s')+' ripple-deleted \u2014 the rest moved up');
   } else if(parsed.tokens[sel]){
     snap();parsed.tokens.splice(sel,1);sel=Math.min(sel,parsed.tokens.length-1);edited();
+    toast('Ripple-deleted \u2014 the rest moved up');
   } else toast('Select a column first');
+}
+// lift: silence the columns but keep their lengths, so nothing after them moves
+function liftSelection(){
+  var lo,hi;
+  if(rangeA>=0){lo=rangeLo();hi=rangeHi();}
+  else if(parsed.tokens[sel]){lo=hi=sel;}
+  else return toast('Select a column first');
+  snap();
+  for(var i=lo;i<=hi;i++){var k=parsed.tokens[i];parsed.tokens[i]={p:true,dur:k.dur,dotted:!!k.dotted};}
+  edited();
+  var n=hi-lo+1;
+  toast(n+' column'+(n===1?'':'s')+' cleared \u2014 gap left, timing kept');
 }
 function clipText(toks){
   return serialize({name:'clip',d:parsed.d,o:parsed.o,b:parsed.b,tokens:toks});
@@ -1248,7 +1317,8 @@ function tokensFromText(txt){
   return pp.tokens.length?pp.tokens:null;
 }
 function copyRange(){
-  if(rangeA<0)return toast('Drag across the grid to select first');
+  if(rangeA<0&&!parsed.tokens[sel])return toast('Drag across the grid to select first');
+  if(rangeA<0){rangeA=rangeB=sel;paintCols();}
   writeClip(parsed.tokens.slice(rangeLo(),rangeHi()+1));
   rangeInfo();toast(clip.length+' note'+(clip.length===1?'':'s')+' copied');
 }
@@ -1273,7 +1343,8 @@ function pasteRange(){
   } else pasteTokens(clip);
 }
 function cutRange(){
-  if(rangeA<0)return;
+  if(rangeA<0&&!parsed.tokens[sel])return toast('Drag across the grid to select first');
+  if(rangeA<0)rangeA=rangeB=sel;
   writeClip(parsed.tokens.slice(rangeLo(),rangeHi()+1));
   snap();
   parsed.tokens.splice(rangeLo(),clip.length);
@@ -1345,8 +1416,6 @@ el('grid').addEventListener('change',function(e){
     withSel(function(k){if(!k.p)k.oct=ov;});
   }
 });
-el('pgPrev').addEventListener('click',function(){page--;renderList();});
-el('pgNext').addEventListener('click',function(){page++;renderList();});
 el('pgSel').addEventListener('click',function(){goToSel(false);});
 (function(){
   var m=document.createElement('div');m.id='ctxmenu';
@@ -1358,7 +1427,8 @@ el('pgSel').addEventListener('click',function(){goToSel(false);});
     ['Insert column before','',function(){return false;},function(){insertColumn(false);}],
     ['Insert column after','',function(){return false;},function(){insertColumn(true);}],
     ['sep'],
-    ['Delete','del',function(){return rangeA<0&&sel<0;},deleteSelection],
+    ['Delete, leave gap','shift del',function(){return rangeA<0&&sel<0;},liftSelection],
+    ['Ripple delete','del',function(){return rangeA<0&&sel<0;},deleteSelection],
     ['sep'],
     ['Select all','ctrl A',function(){return false;},function(){rangeA=0;rangeB=parsed.tokens.length-1;paintCols();rangeInfo();}],
     ['Clear selection','esc',function(){return rangeA<0;},clearRange]
@@ -1410,7 +1480,7 @@ el('gridwrap').addEventListener('keydown',function(e){
     return;
   }
   if(k==='Escape'){clearRange();e.preventDefault();return;}
-  if(k==='Backspace'||k==='Delete'){deleteSelection();e.preventDefault();return;}
+  if(k==='Backspace'||k==='Delete'){(e.shiftKey?liftSelection:deleteSelection)();e.preventDefault();return;}
   if(k.length===1&&/^[a-g]$/.test(k.toLowerCase())){
     addPitch(LETTER_IDX[k.toLowerCase()]+(e.shiftKey?1:0),pen.oct);e.preventDefault();return;
   }
@@ -1508,6 +1578,10 @@ el('shrink').addEventListener('click',function(){
   toast(before+' → '+after+' characters'+(after<before?' ('+Math.round((1-after/before)*100)+'% smaller)':''));
 });
 el('clear').addEventListener('click',function(){autoVersion('clearing');stop();snap();el('src').value='';fullParse();el('chunks').innerHTML='';el('splitInfo').textContent='';});
+el('srcX').addEventListener('click',function(){
+  if(el('src').value.trim()){el('clear').click();toast('Cleared \u2014 paste away (the old one is in Versions)');}
+  el('src').focus();
+});
 el('file').addEventListener('change',function(e){
   var f=e.target.files&&e.target.files[0];if(!f)return;
   var r=new FileReader();
@@ -2174,17 +2248,29 @@ window.addEventListener('resize',sizeRuler);
 document.addEventListener('paste',function(e){
   var t=e.target,tag=t&&t.tagName;
   if(tag==='TEXTAREA'||tag==='INPUT'||(t&&t.isContentEditable))return;
-  // only the grid accepts a pasted tune, and only when it has focus
-  var g=el('gridwrap'),a=document.activeElement;
-  if(!g||!(a===g||g.contains(a)))return;
+  // only the grid accepts a pasted tune: when it has focus, or nothing else does and a column is selected
+  if(!gridOwnsKeys(e))return;
   var dt=e.clipboardData||window.clipboardData;
   if(!dt)return;
   var toks=tokensFromText(dt.getData('text'));
   if(toks){e.preventDefault();pasteTokens(toks,'from clipboard');}
   else if(clip&&clip.length){e.preventDefault();pasteTokens(clip);}
 });
+function gridOwnsKeys(e){
+  var t=e.target,tag=t&&t.tagName,g=el('gridwrap');
+  if(g.contains(t))return true;
+  if(tag==='TEXTAREA'||tag==='INPUT'||tag==='SELECT'||(t&&t.isContentEditable))return false;
+  if(window.getSelection&&String(window.getSelection()).length)return false; // let normal text copy work
+  return rangeA>=0||sel>=0;
+}
 document.addEventListener('keydown',function(e){
   var tag=e.target.tagName;
+  if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.defaultPrevented&&!el('gridwrap').contains(e.target)&&gridOwnsKeys(e)){
+    var kk=e.key.toLowerCase();
+    if(kk==='c'){copyRange();e.preventDefault();return;}
+    if(kk==='x'){cutRange();e.preventDefault();return;}
+    // ctrl+V is left alone here so the browser fires a paste event, handled below
+  }
   if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')&&['TEXTAREA','INPUT'].indexOf(tag)<0){
     e.preventDefault();e.shiftKey?doRedo():doUndo();return;
   }
